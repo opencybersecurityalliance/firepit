@@ -1,0 +1,52 @@
+//
+// (Extended) Parameterized STIX Patterning Grammar
+//
+// - This grammar provides the capability of
+//   - STIX patterning grammar verification
+//   - Reference extraction (to be used with paramstix.py)
+//
+
+?start: obs_disj (qualifier)?
+
+?obs_disj: obs_conj
+         | obs_disj "OR" obs_conj
+
+?obs_conj: obs_exp
+         | obs_conj "AND" obs_exp
+
+?obs_exp: "[" comp_disj "]"
+        | "(" obs_disj ")"
+
+?comp_disj: comp_conj
+          | comp_disj "OR" comp_conj
+
+?comp_conj: comp_exp
+          | comp_conj "AND" comp_exp
+
+comp_exp: PATH (OP|OPE) value
+
+// Only supported qualifier is START/STOP
+?qualifier: "START" timestamp "STOP" timestamp
+?timestamp: "t'" ISOTIMESTAMP "'"
+ISOTIMESTAMP: /\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d.\d{0,6}Z/
+
+?value: list
+      | literal
+      | reference
+
+list: "(" literal ("," literal)* ")" -> lit_list
+
+?literal: "'" /[^']+/ "'" -> quoted_str
+        | NUMBER
+
+reference: ECNAME "." PATH
+
+OP: /([<>!]?=|[<>])/
+OPE: /(NOT )?(IN|LIKE|MATCHES|ISSUBSET|ISSUPERSET)/
+
+PATH: ECNAME (("["DIGIT+"]")?("."|":")ECNAME)*
+
+ECNAME: LETTER ("_"|"-"|LETTER|DIGIT)*
+
+%import common (LETTER, DIGIT, WS, NUMBER)
+%ignore WS
