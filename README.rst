@@ -6,9 +6,6 @@ Firepit - STIX Columnar Storage
 .. image:: https://img.shields.io/pypi/v/firepit.svg
         :target: https://pypi.python.org/pypi/firepit
 
-.. image:: https://img.shields.io/travis/ibm-thl/firepit.svg
-        :target: https://travis-ci.com/ibm-thl/firepit
-
 .. image:: https://readthedocs.org/projects/firepit/badge/?version=latest
         :target: https://firepit.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
