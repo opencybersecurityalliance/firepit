@@ -41,6 +41,7 @@ class PgStorage(SqlStorage):
         self.placeholder = '%s'
         self.text_min = 'LEAST'
         self.text_max = 'GREATEST'
+        self.ifnull = 'COALESCE'
         self.dbname = dbname
         if not session_id:
             session_id = 'firepit'
@@ -109,12 +110,7 @@ class PgStorage(SqlStorage):
             tmp = ''.join(random.choice(string.ascii_lowercase)
                           for x in range(8))
             self._execute(f'DROP VIEW IF EXISTS "{tmp}"', cursor)
-            view = self._execute((f'SELECT definition'
-                                  f' FROM pg_views'
-                                  f' WHERE viewname = "{viewname}"'),
-                                 cursor).fetchone()
-            slct = view['definition']
-            slct = slct.replace(f'CREATE VIEW "{viewname}" AS ', '')
+            slct = self._get_view_def(viewname)
             self._create_view(tmp, slct, cursor=cursor)
             select = re.sub(f'"{viewname}"', tmp, select)
         self._execute(f'DROP VIEW IF EXISTS "{viewname}";', cursor)
