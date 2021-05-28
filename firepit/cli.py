@@ -4,6 +4,7 @@
 Typer-based CLI for testing and experimentation
 """
 
+import csv
 import json
 import logging
 import os
@@ -88,6 +89,21 @@ def assign(
     db = get_storage(dbname, session)
     asc = not desc
     db.assign(name, view, op, by, asc, limit)
+
+
+@app.command()
+def join(
+    dbname: str = typer.Option(defdb(), help="Path/name of database"),
+    session: str = typer.Option(defid(), help="Session ID to data separation"),
+    name: str = typer.Argument(..., help="Name for this new view"),
+    left_view: str = typer.Argument(..., help="Left view name to join"),
+    left_on: str = typer.Argument(..., help="Column from left view to join on"),
+    right_view: str = typer.Argument(..., help="Right view name to join"),
+    right_on: str = typer.Argument(..., help="Column from right view to join on"),
+):
+    """Join two views"""
+    db = get_storage(dbname, session)
+    db.join(name, left_view, left_on, right_view, right_on)
 
 
 @app.command()
@@ -251,8 +267,12 @@ def load(
 ):
     """Cache STIX observation data in SQL"""
     db = get_storage(dbname, session)
-    with open(filename, 'r') as fp:
-        data = json.load(fp)
+    try:
+        with open(filename, 'r') as fp:
+            data = json.load(fp)
+    except json.decoder.JSONDecodeError:
+        with open(filename, 'r') as fp:
+            data = list(csv.DictReader(fp))
     db.load(name, data, sco_type, query_id, preserve_ids)
 
 

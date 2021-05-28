@@ -42,6 +42,9 @@ class SqlStorage:
         self.text_min = 'MIN'
         self.text_max = 'MAX'
 
+        # Function that returns first non-null arg_type
+        self.ifnull = 'IFNULL'
+
     def _get_writer(self, prefix):
         """Get a DB inserter object"""
         # This is DB-specific
@@ -269,6 +272,8 @@ class SqlStorage:
                 raise InvalidObject('Unknown data format')
             if 'id' not in obj or not preserve_ids:
                 obj['id'] = sco_type + '--' + str(uuid.uuid4())
+            if 'type' not in obj:
+                obj['type'] = sco_type
             splitter.write(obj)
         splitter.close()
 
@@ -340,11 +345,10 @@ class SqlStorage:
         r_type, _, r_on = r_on.rpartition(':')
         cols = set()
         for col in l_cols:
-            cols.add(f'ifnull({l_var}."{col}", {r_var}."{col}") AS "{col}"')
+            cols.add(f'{self.ifnull}({l_var}."{col}", {r_var}."{col}") AS "{col}"')
         for col in r_cols:
             # Only add if not already added from left
-            l_col = f'{l_var}."{col}"'
-            if l_col not in cols:
+            if col not in l_cols:
                 cols.add(f'{r_var}."{col}" as "{col}"')
         scols = ', '.join(cols)
         stmt = (f'SELECT {scols} FROM'
