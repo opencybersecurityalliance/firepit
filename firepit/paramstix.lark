@@ -28,7 +28,7 @@ comp_exp: PATH (OP|OPE) value
 // Only supported qualifier is START/STOP
 ?qualifier: "START" timestamp "STOP" timestamp
 ?timestamp: "t'" ISOTIMESTAMP "'"
-ISOTIMESTAMP: /\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d.\d{0,6}Z/
+ISOTIMESTAMP: /\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d(\.\d+)?Z/
 
 ?value: list
       | literal
