@@ -113,9 +113,8 @@ class PgStorage(SqlStorage):
             slct = self._get_view_def(viewname)
             self._create_view(tmp, slct, cursor=cursor)
             select = re.sub(f'"{viewname}"', tmp, select)
-        self._execute(f'DROP VIEW IF EXISTS "{viewname}";', cursor)
         try:
-            self._execute(f'CREATE VIEW "{viewname}" AS {select};', cursor)
+            self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {select};', cursor)
         except psycopg2.errors.UndefinedTable:
             self.connection.rollback()
             cursor = self._execute('BEGIN;')
