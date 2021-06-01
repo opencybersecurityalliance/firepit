@@ -105,11 +105,7 @@ class SQLiteStorage(SqlStorage):
             tmp = ''.join(random.choice(string.ascii_lowercase)
                           for x in range(8))
             self._execute(f'DROP VIEW IF EXISTS "{tmp}"', cursor)
-            view = self._execute((f"SELECT sql from sqlite_master"
-                                  f" WHERE type='view' and name='{viewname}'"),
-                                 cursor).fetchone()
-            slct = view['sql']
-            slct = slct.replace(f'CREATE VIEW "{viewname}" AS ', '')
+            slct = self._get_view_def(viewname)
             self._create_view(tmp, slct, cursor=cursor)
             select = re.sub(f'"{viewname}"', tmp, select)
         self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
@@ -118,8 +114,9 @@ class SQLiteStorage(SqlStorage):
         return cursor
 
     def _get_view_def(self, viewname):
-        view = self._query((f"SELECT sql from sqlite_master"
-                            f" WHERE type='view' and name='{viewname}'")).fetchone()
+        view = self._query(("SELECT sql from sqlite_master"
+                            " WHERE type='view' and name=?"),
+                           values=(viewname,)).fetchone()
         slct = view['sql']
         return slct.replace(f'CREATE VIEW "{viewname}" AS ', '')
 
