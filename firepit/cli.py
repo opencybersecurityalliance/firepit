@@ -83,7 +83,7 @@ def assign(
     op: str = typer.Option(..., help="Operation to perform (sort, group, etc.)"),
     by: str = typer.Option(..., help="STIX object path"),
     desc: bool = typer.Option(False, help="Sort descending"),
-    limit: int = typer.Option(10, help="Max number of rows to return"),
+    limit: int = typer.Option(None, help="Max number of rows to return"),
 ):
     """Perform an operation on a column and name the result"""
     db = get_storage(dbname, session)
@@ -111,7 +111,7 @@ def lookup(
     dbname: str = typer.Option(defdb(), help="Path/name of database"),
     session: str = typer.Option(defid(), help="Session ID to data separation"),
     name: str = typer.Argument(..., help="View name to look up"),
-    limit: int = typer.Option(10, help="Max number of rows to return"),
+    limit: int = typer.Option(None, help="Max number of rows to return"),
     offset: int = typer.Option(0, help="Number of rows to skip"),
     format: str = typer.Option('table', help="Output format [table, json]"),
 ):
