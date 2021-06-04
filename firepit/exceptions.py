@@ -28,3 +28,7 @@ class InvalidViewname(Exception):
 
 class InvalidStixPath(Exception):
     pass
+
+
+class IncompatibleType(Exception):
+    pass

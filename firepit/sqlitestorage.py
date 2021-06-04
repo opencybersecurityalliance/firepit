@@ -93,7 +93,7 @@ class SQLiteStorage(SqlStorage):
         self.connection.commit()
         return cursor
 
-    def _create_view(self, viewname, select, deps=None, cursor=None):
+    def _create_view(self, viewname, select, sco_type, deps=None, cursor=None):
         """Overrides parent"""
         validate_name(viewname)
         if not cursor:
@@ -106,11 +106,11 @@ class SQLiteStorage(SqlStorage):
                           for x in range(8))
             self._execute(f'DROP VIEW IF EXISTS "{tmp}"', cursor)
             slct = self._get_view_def(viewname)
-            self._create_view(tmp, slct, cursor=cursor)
+            self._create_view(tmp, slct, sco_type, cursor=cursor)
             select = re.sub(f'"{viewname}"', tmp, select)
         self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
         self._execute(f'CREATE VIEW "{viewname}" AS {select}', cursor)
-        self._new_name(cursor, viewname)
+        self._new_name(cursor, viewname, sco_type)
         return cursor
 
     def _get_view_def(self, viewname):

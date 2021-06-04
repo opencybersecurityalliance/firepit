@@ -5,6 +5,8 @@ import pytest
 
 from collections import Counter
 
+from firepit.exceptions import IncompatibleType
+
 from .helpers import tmp_storage
 
 
@@ -42,9 +44,18 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
 
     store.assign('sorted', 'urls', op='sort', by='value')
     urls = store.values('url:value', 'sorted')
-    print(urls)
+    print('sorted:', urls)
     assert len(urls) == 31
     assert urls[0] == 'http://www11.example.com/page/108'
+
+    # Now try to change urls, even though sorted is defined using it
+    store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    urls = store.values('url:value', 'urls')
+    print('reused:', urls)
+    assert len(urls) == 14
+    sorted_urls = store.values('url:value', 'sorted')
+    print('sorted:', sorted_urls)
+    assert len(sorted_urls) == 14  # Also changes...weird
 
     store.extract('a_ips', 'ipv4-addr', 'q1', "[ipv4-addr:value LIKE '10.%']")
     a_ips = store.values('ipv4-addr:value', 'a_ips')
@@ -325,3 +336,22 @@ def test_merge(fake_bundle_file, tmpdir):
     merged = set(store.values('url:value', 'merged'))
 
     assert merged == all_urls
+
+
+@pytest.mark.skip(reason="this only happens with postgresql")
+def test_change_type(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    # Create a var `foo` of type url
+    store.extract('foo', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    urls = store.values('url:value', 'foo')
+    print(urls)
+    assert len(urls) == 14
+
+    # Create a var `sorted_foo` of type url that depends on `foo`
+    store.assign('sorted_foo', 'foo', op='sort', by='value')
+
+    # sqlite3 doesn't have issues with this; only PostgreSQL
+    with pytest.raises(IncompatibleType):
+        store.extract('foo', 'ipv4-addr', 'q1', "[ipv4-addr:value ISSUBSET '192.168.0.0/16']")

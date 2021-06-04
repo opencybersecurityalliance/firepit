@@ -7,6 +7,7 @@ import string
 import psycopg2
 import psycopg2.extras
 
+from firepit.exceptions import IncompatibleType
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
 from firepit.sqlstorage import validate_name
@@ -97,7 +98,7 @@ class PgStorage(SqlStorage):
     def _create_empty_view(self, viewname, cursor):
         cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as type WHERE 1<>1;')
 
-    def _create_view(self, viewname, select, deps=None, cursor=None):
+    def _create_view(self, viewname, select, sco_type, deps=None, cursor=None):
         """Overrides parent"""
         validate_name(viewname)
         if not cursor:
@@ -111,17 +112,25 @@ class PgStorage(SqlStorage):
                           for x in range(8))
             self._execute(f'DROP VIEW IF EXISTS "{tmp}"', cursor)
             slct = self._get_view_def(viewname)
-            self._create_view(tmp, slct, cursor=cursor)
+            self._create_view(tmp, slct, sco_type, cursor=cursor)
             select = re.sub(f'"{viewname}"', tmp, select)
-        try:
-            self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {select};', cursor)
-        except psycopg2.errors.UndefinedTable:
-            self.connection.rollback()
-            cursor = self._execute('BEGIN;')
-            self._create_empty_view(viewname, cursor)
+        # Check if deps exist
+        tables = self.tables()
+        for dep in deps:
+            if dep not in tables:
+                break
+        else:
+            try:
+                self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {select}', cursor)
+            except psycopg2.errors.UndefinedTable:
+                self.connection.rollback()
+                cursor = self._execute('BEGIN;')
+                self._create_empty_view(viewname, cursor)
+            except psycopg2.errors.InvalidTableDefinition:
+                raise IncompatibleType
         if tmp:
             self._execute(f'DROP VIEW IF EXISTS "{tmp}"', cursor)
-        self._new_name(cursor, viewname)
+        self._new_name(cursor, viewname, sco_type)
         return cursor
 
     def _get_view_def(self, viewname):

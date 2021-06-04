@@ -4,6 +4,7 @@ import uuid
 import orjson
 
 from firepit import raft
+from firepit.exceptions import IncompatibleType
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidObject
 from firepit.exceptions import StixPatternError
@@ -64,9 +65,10 @@ class SqlStorage:
         self.connection.commit()
         cursor.close()
 
-    def _new_name(self, cursor, name):
-        stmt = f'INSERT INTO "__symtable" (name) VALUES ({self.placeholder});'
-        cursor.execute(stmt, (name,))
+    def _new_name(self, cursor, name, sco_type):
+        stmt = ('INSERT INTO "__symtable" (name, type)'
+                f' VALUES ({self.placeholder}, {self.placeholder});')
+        cursor.execute(stmt, (name, sco_type))
 
     def _drop_name(self, cursor, name):
         stmt = f'DELETE FROM "__symtable" WHERE name = {self.placeholder};'
@@ -137,7 +139,7 @@ class SqlStorage:
             stmt += f' OFFSET {offset}'
         return stmt
 
-    def _create_view(self, viewname, select, deps=None, cursor=None):
+    def _create_view(self, viewname, select, sco_type, deps=None, cursor=None):
         # This is DB-specific
         raise NotImplementedError('Storage._create_view')
 
@@ -163,10 +165,12 @@ class SqlStorage:
 
         # Need to convert viewname from identifier to string, so use single quotes
         namestr = f"'{viewname}'"
-        cursor = None
+        cursor = self._execute('BEGIN;')
 
         # If we're reassigning an existing viewname, we need to drop old membership
+        old_type = None
         if viewname in self.views():
+            old_type = self.table_type(viewname)
             stmt = f'DELETE FROM __membership WHERE var = {namestr};'
             cursor = self._execute(stmt, cursor)
 
@@ -184,7 +188,11 @@ class SqlStorage:
         select = (f'SELECT * FROM "{sco_type}" WHERE "id" IN'
                   f' (SELECT "sco_id" FROM __membership'
                   f"  WHERE var = '{viewname}');")
-        cursor = self._create_view(viewname, select, deps=[tablename], cursor=cursor)
+
+        try:
+            cursor = self._create_view(viewname, select, sco_type, deps=[tablename], cursor=cursor)
+        except IncompatibleType:
+            raise IncompatibleType(f'{viewname} has type "{old_type}"; cannot assign type "{sco_type}"')
         self.connection.commit()
         cursor.close()
 
@@ -244,7 +252,8 @@ class SqlStorage:
                 on, sortby=by, ascending=ascending, limit=limit)
         elif op == 'group':
             stmt = self._select(on, groupby=by)
-        cursor = self._create_view(viewname, stmt, deps=[on])
+        sco_type = self.table_type(on)
+        cursor = self._create_view(viewname, stmt, sco_type, deps=[on])
         self.connection.commit()
         cursor.close()
 
@@ -315,7 +324,7 @@ class SqlStorage:
         select = (f'SELECT * FROM "{sco_type}" WHERE "id" IN'
                   f' (SELECT "sco_id" FROM __membership'
                   f"  WHERE var = '{viewname}');")
-        cursor = self._create_view(viewname, select, cursor=cursor)
+        cursor = self._create_view(viewname, select, sco_type, cursor=cursor)
         self.connection.commit()
 
     def update(self, objects, query_id=None):
@@ -354,7 +363,8 @@ class SqlStorage:
         stmt = (f'SELECT {scols} FROM'
                 f' {l_var} INNER JOIN {r_var}'
                 f' ON {l_var}."{l_on}" = {r_var}."{r_on}"')
-        cursor = self._create_view(viewname, stmt, deps=[l_var, r_var])
+        sco_type = self.table_type(l_var)
+        cursor = self._create_view(viewname, stmt, sco_type, deps=[l_var, r_var])
         self.connection.commit()
         cursor.close()
 
@@ -388,7 +398,7 @@ class SqlStorage:
         slct = f'SELECT * FROM ({slct}) AS tmp'
         if where:
             slct += f' WHERE {where}'
-        cursor = self._create_view(viewname, slct)
+        cursor = self._create_view(viewname, slct, sco_type)
         self.connection.commit()
         cursor.close()
 
@@ -438,8 +448,9 @@ class SqlStorage:
     def table_type(self, viewname):
         """Get the SCO type for table/view `viewname`"""
         validate_name(viewname)
-        stmt = f'SELECT "type" FROM "{viewname}" WHERE "type" IS NOT NULL LIMIT 1;'
-        cursor = self._query(stmt)
+        #stmt = f'SELECT "type" FROM "{viewname}" WHERE "type" IS NOT NULL LIMIT 1;'
+        stmt = f'SELECT "type" FROM "__symtable" WHERE name = {self.placeholder};'
+        cursor = self._query(stmt, (viewname,))
         res = cursor.fetchone()
         return list(res.values())[0] if res else None
 
@@ -488,10 +499,15 @@ class SqlStorage:
     def merge(self, viewname, input_views):
         validate_name(viewname)
         selects = []
+        types = set()
         for name in input_views:
             validate_name(name)
+            types.add(self.table_type(name))
             selects.append(f'SELECT * FROM "{name}"')
+        if len(types) > 1:
+            raise IncompatibleType('cannot merge types ' + ', '.join(types))
         stmt = ' UNION '.join(selects)
-        cursor = self._create_view(viewname, stmt, deps=input_views)
+        sco_type = self.table_type(input_views[0])
+        cursor = self._create_view(viewname, stmt, sco_type, deps=input_views)
         self.connection.commit()
         cursor.close()

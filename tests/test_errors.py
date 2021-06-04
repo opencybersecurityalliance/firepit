@@ -1,6 +1,7 @@
 import os
 import pytest
 
+from firepit.exceptions import IncompatibleType
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidStixPath
 from firepit.exceptions import InvalidViewname
@@ -133,3 +134,14 @@ def test_sort_bad_limit(fake_bundle_file, tmpdir):
     store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
     with pytest.raises(TypeError):
         store.assign('sorted', 'urls', op='sort', by='value', limit='1; SELECT 1; --')
+
+
+def test_merge_fail(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+
+    store.cache('test-bundle', [fake_bundle_file])
+    store.extract('urls', 'url', 'test-bundle', "[url:value LIKE '%page/1%']")
+    store.extract('ips', 'ipv4-addr', 'test-bundle', "[ipv4-addr:value != '8.8.8.8']")
+
+    with pytest.raises(IncompatibleType):
+        store.merge('merged', ['urls', 'ips'])
