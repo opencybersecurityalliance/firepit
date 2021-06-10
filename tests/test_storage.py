@@ -76,7 +76,11 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     counter = Counter(users)
     assert counter['henry'] == 2
     assert counter['isabel'] == 12
-    store.assign('grouped_users', 'users', op='group', by='user-account:account_login')
+    by = 'user-account:account_login'
+    store.assign('grouped_users', 'users', op='group', by=by)
+    cols = store.columns('grouped_users')
+    _, _, by = by.rpartition(':')
+    assert f'unique_{by}' not in cols
     grouped_users = store.lookup('grouped_users')
     print(grouped_users)
     henry = next((item for item in grouped_users if item['account_login'] == 'henry'), None)

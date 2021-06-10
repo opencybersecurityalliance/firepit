@@ -120,6 +120,9 @@ class SqlStorage:
             ]
             sco_type = self.table_type(tvname)
             for col in self.schema(tvname):
+                # Don't aggregate the column we used for grouping
+                if col['name'] == groupby:
+                    continue
                 agg = auto_agg(sco_type, col['name'], col['type'])
                 if agg:
                     aggs.append(agg)
