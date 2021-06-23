@@ -48,9 +48,19 @@ def _get_objects(fp, types):
         pass
 
 
+def _yield_objects(bundle, types):
+    if 'type' not in bundle or bundle['type'] != 'bundle':
+        bundle = {}
+    for obj in bundle.get('objects', []):
+        if not types or obj.get('type') in types:
+            yield obj
+
+
 def get_objects(source, types=None):
     '''A generator function that yields STIX objects from source'''
-    if source.startswith('http'):
+    if isinstance(source, dict):
+        yield from _yield_objects(source, types)
+    elif source.startswith('http'):
         response = requests.get(source, stream=True)
         fp = GeneratorIO(response.iter_content(chunk_size=8192))
         yield from _get_objects(fp, types)
@@ -59,11 +69,7 @@ def get_objects(source, types=None):
     else:
         with open(source, 'r') as fp:
             bundle = orjson.loads(fp.read())
-        if 'type' not in bundle or bundle['type'] != 'bundle':
-            bundle = {}
-        for obj in bundle.get('objects', []):
-            if not types or obj.get('type') in types:
-                yield obj
+        yield from _yield_objects(bundle, types)
 
 
 def _is_custom_obj(obj):

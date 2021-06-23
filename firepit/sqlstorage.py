@@ -232,13 +232,17 @@ class SqlStorage:
         """Cache the result of a query"""
         logger.debug('Caching %s', query_id)
 
+        if not isinstance(bundles, list):
+            bundles = [bundles]
+
         writer = self._get_writer(str(query_id))
         splitter = SplitWriter(writer, batchsize=1000, query_id=str(query_id))
 
         # walk the bundles and figure out all the columns
-        for filename in bundles:
-            logger.debug('- Caching %s', filename)
-            for obj in _transform(STIX_TRANSFORMS, filename):
+        for bundle in bundles:
+            if isinstance(bundle, str):
+                logger.debug('- Caching %s', bundle)
+            for obj in _transform(STIX_TRANSFORMS, bundle):
                 splitter.write(obj)
         splitter.close()
 

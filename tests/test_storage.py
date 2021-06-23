@@ -10,9 +10,26 @@ from firepit.exceptions import IncompatibleType
 from .helpers import tmp_storage
 
 
-def test_local(fake_bundle_file, fake_csv_file, tmpdir):
+def test_local(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
-    store.cache('q1', [fake_bundle_file])
+    store.cache('q1', fake_bundle_file)
+
+    store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    urls = store.values('url:value', 'urls')
+    print(urls)
+    assert len(urls) == 14
+    assert 'http://www8.example.com/page/176' in urls
+    assert 'http://www27.example.com/page/64' not in urls
+
+    store.delete()
+
+
+def test_in_memory(fake_bundle_file, tmpdir):
+    with open(fake_bundle_file, 'r') as fp:
+        bundle = json.loads(fp.read())
+
+    store = tmp_storage(tmpdir)
+    store.cache('q1', bundle)
 
     store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
     urls = store.values('url:value', 'urls')
