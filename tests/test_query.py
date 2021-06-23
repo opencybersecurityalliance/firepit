@@ -96,24 +96,24 @@ def test_query_2():
 
     p1 = Predicate('foo', '!=', 0)
     p2 = Predicate('bar', 'LIKE', r'%blah%')
-    filt = Filter([p1, p2])
+    filt = Filter([p1, p2], Filter.OR)
     query.append(filt)
     qtext, values = query.render('%s')
-    assert qtext == r'SELECT * FROM "my_table" WHERE ("foo" != %s) AND ("bar" LIKE %s)'
+    assert qtext == r'SELECT * FROM "my_table" WHERE ("foo" != %s) OR ("bar" LIKE %s)'
     assert len(values) == 2
     assert values[0] == 0
     assert values[1] == r'%blah%'
 
     query.append(Limit(10))
     qtext, values = query.render('%s')
-    assert qtext == r'SELECT * FROM "my_table" WHERE ("foo" != %s) AND ("bar" LIKE %s) LIMIT 10'
+    assert qtext == r'SELECT * FROM "my_table" WHERE ("foo" != %s) OR ("bar" LIKE %s) LIMIT 10'
     assert len(values) == 2
     assert values[0] == 0
     assert values[1] == r'%blah%'
 
     query.append(Offset(10))
     qtext, values = query.render('?')
-    assert qtext == r'SELECT * FROM "my_table" WHERE ("foo" != ?) AND ("bar" LIKE ?) LIMIT 10 OFFSET 10'
+    assert qtext == r'SELECT * FROM "my_table" WHERE ("foo" != ?) OR ("bar" LIKE ?) LIMIT 10 OFFSET 10'
     assert len(values) == 2
     assert values[0] == 0
     assert values[1] == r'%blah%'

@@ -65,8 +65,12 @@ class Predicate:
 class Filter:
     """Alternative SQL WHERE clause"""
 
-    def __init__(self, preds):
+    OR = ' OR '
+    AND = ' AND '
+
+    def __init__(self, preds, op=AND):
         self.preds = preds
+        self.op = op
         self.values = ()
         for pred in self.preds:
             self.values += pred.values
@@ -75,7 +79,7 @@ class Filter:
         pred_list = []
         for pred in self.preds:
             pred_list.append(pred.render(placeholder))
-        return ' AND '.join(pred_list)
+        return self.op.join(pred_list)
 
 
 class Order:
