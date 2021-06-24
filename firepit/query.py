@@ -79,7 +79,10 @@ class Filter:
         pred_list = []
         for pred in self.preds:
             pred_list.append(pred.render(placeholder))
-        return self.op.join(pred_list)
+        result = self.op.join(pred_list)
+        if self.op == Filter.OR:
+            return f'({result})'
+        return result
 
 
 class Order:
@@ -296,6 +299,8 @@ class Query:
                 values += stage.values
                 if isinstance(prev, Aggregation):
                     keyword = 'HAVING'
+                elif isinstance(prev, Filter):
+                    keyword = 'AND'
                 else:
                     keyword = 'WHERE'
                 query = f'{query} {keyword} {text}'
