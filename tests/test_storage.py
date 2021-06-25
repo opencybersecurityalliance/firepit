@@ -309,6 +309,25 @@ def test_appdata(fake_bundle_file, tmpdir):
     assert len(result) == len(data)
 
 
+def test_viewdata(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+    store.extract('ssh_conns', 'network-traffic', 'q1', "[network-traffic:dst_port = 22]")
+    ssh_data = {'foo': 99}
+    store.set_appdata('ssh_conns', json.dumps(ssh_data))
+    store.extract('dns_conns', 'network-traffic', 'q1', "[network-traffic:dst_port = 53]")
+    dns_data = {'bar': 98}
+    store.set_appdata('dns_conns', json.dumps(dns_data))
+
+    results = store.get_view_data(['ssh_conns', 'dns_conns'])
+    assert len(results) == 2
+    for result in results:
+        if result['name'] == 'ssh_conns':
+            assert ssh_data == json.loads(result['appdata'])
+        else:
+            assert dns_data == json.loads(result['appdata'])
+
+
 def test_duplicate(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
 
