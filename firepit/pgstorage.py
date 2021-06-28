@@ -95,6 +95,17 @@ class PgStorage(SqlStorage):
             logger.debug("Closing PostgreSQL DB connection")
             self.connection.close()
 
+    def _execute(self, statement, cursor=None):
+        """Private wrapper for logging SQL statements"""
+        logger.debug('Executing statement: %s', statement)
+        if not cursor:
+            cursor = self.connection.cursor()
+        try:
+            cursor.execute(statement)
+        except psycopg2.errors.UndefinedColumn as e:
+            raise InvalidAttr(str(e)) from e
+        return cursor
+
     def _create_empty_view(self, viewname, cursor):
         cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as type WHERE 1<>1;')
 

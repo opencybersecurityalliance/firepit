@@ -43,6 +43,8 @@ def cache(
 ):
     """Cache STIX observation data in SQL"""
     db = get_storage(dbname, session)
+    if isinstance(filenames, tuple):
+        filenames = list(filenames)
     db.cache(query_id, filenames)
 
 
