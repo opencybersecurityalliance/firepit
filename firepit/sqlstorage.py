@@ -524,7 +524,7 @@ class SqlStorage:
         for name in input_views:
             validate_name(name)
             types.add(self.table_type(name))
-            selects.append(f'SELECT * FROM "{name}"')
+            selects.append(self._get_view_def(name))
         if len(types) > 1:
             raise IncompatibleType('cannot merge types ' + ', '.join(types))
         stmt = ' UNION '.join(selects)

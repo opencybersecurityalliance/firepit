@@ -375,7 +375,6 @@ def test_merge(fake_bundle_file, tmpdir):
 
     store.merge('merged', ['urls1', 'urls2'])
     merged = set(store.values('url:value', 'merged'))
-
     assert merged == all_urls
 
 
@@ -432,3 +431,34 @@ def test_rename(fake_bundle_file, tmpdir):
 
     urls2 = store.lookup('urls2')
     assert len(urls2) == 14
+
+
+@pytest.mark.parametrize(
+    'names', [
+        (['urls1']),
+        (['urls2']),
+        (['urls1', 'urls2']),
+    ]
+)
+def test_remove_after_merge(fake_bundle_file, tmpdir, names):
+    store = tmp_storage(tmpdir)
+
+    store.cache('test-bundle', [fake_bundle_file])
+    all_urls = set(store.values('url:value', 'url'))
+
+    store.extract('urls1', 'url', 'test-bundle', "[url:value LIKE '%page/1%']")
+    urls1 = set(store.values('url:value', 'urls1'))
+
+    store.extract('urls2', 'url', 'test-bundle', "[url:value NOT LIKE '%page/1%']")
+    urls2 = set(store.values('url:value', 'urls2'))
+
+    assert urls1 | urls2 == all_urls
+
+    store.merge('merged', ['urls1', 'urls2'])
+
+    # Remove the views we merged
+    for name in names:
+        store.remove_view(name)
+
+    merged = set(store.values('url:value', 'merged'))
+    assert merged == all_urls
