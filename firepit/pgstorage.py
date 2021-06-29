@@ -8,6 +8,7 @@ import psycopg2
 import psycopg2.extras
 
 from firepit.exceptions import IncompatibleType
+from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
 from firepit.sqlstorage import validate_name
@@ -105,6 +106,8 @@ class PgStorage(SqlStorage):
             cursor.execute(query, values)
         except psycopg2.errors.UndefinedColumn as e:
             raise InvalidAttr(str(e)) from e
+        except psycopg2.errors.UndefinedTable as e:
+            raise UnknownViewname(str(e)) from e
         self.connection.commit()
         return cursor
 

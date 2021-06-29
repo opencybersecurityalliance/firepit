@@ -6,6 +6,7 @@ import pytest
 from collections import Counter
 
 from firepit.exceptions import IncompatibleType
+from firepit.exceptions import UnknownViewname
 
 from .helpers import tmp_storage
 
@@ -395,3 +396,39 @@ def test_change_type(fake_bundle_file, tmpdir):
     # sqlite3 doesn't have issues with this; only PostgreSQL
     with pytest.raises(IncompatibleType):
         store.extract('foo', 'ipv4-addr', 'q1', "[ipv4-addr:value ISSUBSET '192.168.0.0/16']")
+
+
+def test_remove(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', fake_bundle_file)
+
+    store.extract('urls1', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    urls1 = store.lookup('urls1')
+    assert len(urls1) == 14
+
+    store.extract('urls2', 'url', 'q1', "[url:value LIKE '%page/2%']")
+    urls2 = store.lookup('urls2')
+    assert len(urls2)
+
+    store.remove_view('urls1')
+    with pytest.raises(UnknownViewname):
+        store.lookup('urls1')
+
+    urls2 = store.lookup('urls2')
+    assert len(urls2)
+
+
+def test_rename(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', fake_bundle_file)
+
+    store.extract('urls1', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    urls1 = store.lookup('urls1')
+    assert len(urls1) == 14
+
+    store.rename_view('urls1', 'urls2')
+    with pytest.raises(UnknownViewname):
+        store.lookup('urls1')
+
+    urls2 = store.lookup('urls2')
+    assert len(urls2) == 14

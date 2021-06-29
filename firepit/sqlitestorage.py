@@ -7,6 +7,7 @@ import sqlite3
 import string
 
 from firepit.exceptions import InvalidAttr
+from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
 from firepit.sqlstorage import validate_name
@@ -81,6 +82,8 @@ class SQLiteStorage(SqlStorage):
             elif e.args[0].startswith("no such table: main."):
                 # Just means no match - return empty cursor?
                 cursor = self.connection.cursor()
+            elif e.args[0].startswith("no such table: "):
+                raise UnknownViewname(e.args[0]) from e
             else:
                 raise Exception('Internal error: ' + e.args[0]) from e
         return cursor
@@ -164,6 +167,19 @@ class SQLiteStorage(SqlStorage):
             os.remove(self.dbname)
         except FileNotFoundError:
             pass
+
+    def rename_view(self, oldname, newname):
+        """Rename view `oldname` to `newname`"""
+        validate_name(oldname)
+        validate_name(newname)
+        view_type = self.table_type(oldname)
+        qry = self._get_view_def(oldname)
+        cursor = self._execute('BEGIN;')
+        self._create_view(newname, qry, view_type, cursor=cursor)
+        self._execute(f'DROP VIEW IF EXISTS "{oldname}"', cursor)
+        self._drop_name(cursor, oldname)
+        self.connection.commit()
+        cursor.close()
 
 
 def row_factory(cursor, row):

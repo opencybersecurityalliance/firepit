@@ -32,3 +32,7 @@ class InvalidStixPath(Exception):
 
 class IncompatibleType(Exception):
     pass
+
+
+class UnknownViewname(Exception):
+    pass

@@ -532,3 +532,24 @@ class SqlStorage:
         cursor = self._create_view(viewname, stmt, sco_type, deps=input_views)
         self.connection.commit()
         cursor.close()
+
+    def remove_view(self, viewname):
+        """Remove view `viewname`"""
+        validate_name(viewname)
+        cursor = self._execute('BEGIN;')
+        self._execute(f'DROP VIEW IF EXISTS "{viewname}";', cursor)
+        self._drop_name(cursor, viewname)
+        self.connection.commit()
+        cursor.close()
+
+    def rename_view(self, oldname, newname):
+        """Rename view `oldname` to `newname`"""
+        validate_name(oldname)
+        validate_name(newname)
+        view_type = self.table_type(oldname)
+        cursor = self._execute('BEGIN;')
+        self._execute(f'ALTER VIEW "{oldname}" RENAME TO "{newname}";', cursor)
+        self._drop_name(cursor, oldname)
+        self._new_name(cursor, newname, view_type)
+        self.connection.commit()
+        cursor.close()
