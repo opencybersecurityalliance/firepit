@@ -43,6 +43,8 @@ def cache(
 ):
     """Cache STIX observation data in SQL"""
     db = get_storage(dbname, session)
+    if isinstance(filenames, tuple):
+        filenames = list(filenames)
     db.cache(query_id, filenames)
 
 
@@ -160,6 +162,22 @@ def views(
     rows = db.views()
     for row in rows:
         print(row)
+
+
+@app.command()
+def viewdata(
+    dbname: str = typer.Option(defdb(), help="Path/name of database"),
+    session: str = typer.Option(defid(), help="Session ID to data separation"),
+    views: List[str] = typer.Argument(None, help="Views to merge"),
+    format: str = typer.Option('table', help="Output format [table, json]"),
+):
+    """Get view data for views [default is all views]"""
+    db = get_storage(dbname, session)
+    rows = db.get_view_data(views)
+    if format == 'json':
+        print(json.dumps(rows, separators=[',', ':']))
+    else:
+        print(tabulate(rows, headers='keys'))
 
 
 @app.command()
@@ -300,6 +318,29 @@ def merge(
     """Merge 2 or more views into a new view"""
     db = get_storage(dbname, session)
     db.merge(name, views)
+
+
+@app.command()
+def remove(
+    dbname: str = typer.Option(defdb(), help="Path/name of database"),
+    session: str = typer.Option(defid(), help="Session ID to data separation"),
+    name: str = typer.Argument(..., help="Name of view to remove"),
+):
+    """Remove a view"""
+    db = get_storage(dbname, session)
+    db.remove_view(name)
+
+
+@app.command()
+def rename(
+    dbname: str = typer.Option(defdb(), help="Path/name of database"),
+    session: str = typer.Option(defid(), help="Session ID to data separation"),
+    oldname: str = typer.Argument(..., help="Name of view to rename"),
+    newname: str = typer.Argument(..., help="New name of view to rename"),
+):
+    """Remove a view"""
+    db = get_storage(dbname, session)
+    db.rename_view(oldname, newname)
 
 
 if __name__ == "__main__":

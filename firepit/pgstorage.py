@@ -8,6 +8,7 @@ import psycopg2
 import psycopg2.extras
 
 from firepit.exceptions import IncompatibleType
+from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
 from firepit.sqlstorage import validate_name
@@ -94,6 +95,21 @@ class PgStorage(SqlStorage):
         if self.connection:
             logger.debug("Closing PostgreSQL DB connection")
             self.connection.close()
+
+    def _query(self, query, values=None):
+        """Private wrapper for logging SQL query"""
+        logger.debug('Executing query: %s', query)
+        cursor = self.connection.cursor()
+        if not values:
+            values = ()
+        try:
+            cursor.execute(query, values)
+        except psycopg2.errors.UndefinedColumn as e:
+            raise InvalidAttr(str(e)) from e
+        except psycopg2.errors.UndefinedTable as e:
+            raise UnknownViewname(str(e)) from e
+        self.connection.commit()
+        return cursor
 
     def _create_empty_view(self, viewname, cursor):
         cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as type WHERE 1<>1;')

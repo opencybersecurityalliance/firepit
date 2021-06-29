@@ -499,6 +499,20 @@ class SqlStorage:
             return res['appdata']
         return res[0]
 
+    def get_view_data(self, viewnames=None):
+        """Retrieve information about one or more viewnames"""
+        if viewnames:
+            placeholders = ', '.join([self.placeholder] * len(viewnames))
+            stmt = f'SELECT * FROM "__symtable" WHERE name IN ({placeholders});'
+            values = tuple(viewnames)
+        else:
+            stmt = f'SELECT * FROM "__symtable";'
+            values = None
+        cursor = self._query(stmt, values)
+        res = cursor.fetchall()
+        cursor.close()
+        return res
+
     def run_query(self, query):
         query_text, query_values = query.render(self.placeholder)
         return self._query(query_text, query_values)
@@ -516,5 +530,26 @@ class SqlStorage:
         stmt = ' UNION '.join(selects)
         sco_type = self.table_type(input_views[0])
         cursor = self._create_view(viewname, stmt, sco_type, deps=input_views)
+        self.connection.commit()
+        cursor.close()
+
+    def remove_view(self, viewname):
+        """Remove view `viewname`"""
+        validate_name(viewname)
+        cursor = self._execute('BEGIN;')
+        self._execute(f'DROP VIEW IF EXISTS "{viewname}";', cursor)
+        self._drop_name(cursor, viewname)
+        self.connection.commit()
+        cursor.close()
+
+    def rename_view(self, oldname, newname):
+        """Rename view `oldname` to `newname`"""
+        validate_name(oldname)
+        validate_name(newname)
+        view_type = self.table_type(oldname)
+        cursor = self._execute('BEGIN;')
+        self._execute(f'ALTER VIEW "{oldname}" RENAME TO "{newname}";', cursor)
+        self._drop_name(cursor, oldname)
+        self._new_name(cursor, newname, view_type)
         self.connection.commit()
         cursor.close()
