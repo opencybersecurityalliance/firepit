@@ -499,11 +499,15 @@ class SqlStorage:
             return res['appdata']
         return res[0]
 
-    def get_view_data(self, viewnames):
-        """Retrieve information about one or viewnames"""
-        placeholders = ', '.join([self.placeholder] * len(viewnames))
-        stmt = f'SELECT * FROM "__symtable" WHERE name IN ({placeholders});'
-        values = tuple(viewnames)
+    def get_view_data(self, viewnames=None):
+        """Retrieve information about one or more viewnames"""
+        if viewnames:
+            placeholders = ', '.join([self.placeholder] * len(viewnames))
+            stmt = f'SELECT * FROM "__symtable" WHERE name IN ({placeholders});'
+            values = tuple(viewnames)
+        else:
+            stmt = f'SELECT * FROM "__symtable";'
+            values = None
         cursor = self._query(stmt, values)
         res = cursor.fetchall()
         cursor.close()
