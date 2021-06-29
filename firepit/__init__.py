@@ -2,7 +2,7 @@
 
 __author__ = """IBM Security"""
 __email__ = 'pcoccoli@us.ibm.com'
-__version__ = '1.0.7'
+__version__ = '1.0.8'
 
 
 from importlib import import_module
