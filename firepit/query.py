@@ -222,7 +222,7 @@ class CountUnique:
         if self.cols:
             cols = ', '.join([f'"{col}"' for col in self.cols])
             return f'COUNT(DISTINCT {cols}) AS "count"'
-        return f'COUNT(*) AS "count"'
+        return 'COUNT(*) AS "count"'
 
 
 class Join:

@@ -115,7 +115,7 @@ class SqlStorage:
 
             # For grouping, we need to aggregate data in the columns.
             aggs = [
-                f'MIN("type") as "type"',
+                'MIN("type") as "type"',
                 f'"{groupby}"',
             ]
             sco_type = self.table_type(tvname)
@@ -506,7 +506,7 @@ class SqlStorage:
             stmt = f'SELECT * FROM "__symtable" WHERE name IN ({placeholders});'
             values = tuple(viewnames)
         else:
-            stmt = f'SELECT * FROM "__symtable";'
+            stmt = 'SELECT * FROM "__symtable";'
             values = None
         cursor = self._query(stmt, values)
         res = cursor.fetchall()

@@ -8,6 +8,7 @@ import psycopg2
 import psycopg2.extras
 
 from firepit.exceptions import IncompatibleType
+from firepit.exceptions import InvalidAttr
 from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
