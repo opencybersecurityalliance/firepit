@@ -161,9 +161,7 @@ class PgStorage(SqlStorage):
         # PostgreSQL will "expand" the original "*" to the columns
         # that existed at that time.  We need to get the star back, to
         # match SQLite3's behavior.
-        # Actually, I'm not convinced we need this...
-        # return re.sub(r'^.*?FROM', 'SELECT * FROM', stmt)
-        return stmt
+        return re.sub(r'^.*?FROM', 'SELECT * FROM', stmt, 1, re.DOTALL)
 
     def tables(self):
         cursor = self._query("SELECT table_name"
