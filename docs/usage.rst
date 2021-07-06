@@ -7,17 +7,22 @@ As a package
 
 To use firepit in a project::
 
-    from firepit.sqlstorage import get_storage
+    from firepit import get_storage
 
     db = get_storage('observations.db', session_id)
     db.cache('my_query_id', ['bundle1.json', 'bundle2.json'])
 
 After caching your STIX bundles, your database will contain the data.
 
+Passing a file path to `get_storage` will use sqlite3.  Passing in a
+PostgreSQL connection string (e.g. postgresql://...) will instead
+attempt to connect to the PostgreSQL instance specified.
+
+
 As a tool
 ---------
 
-.. code-block:: bash
+.. code-block::
 
     Usage: firepit [OPTIONS] COMMAND [ARGS]...
 
@@ -35,16 +40,20 @@ As a tool
       extract      Create a view of a subset of cached data
       filter       Create a filtered view of a subset of cached data
       get-appdata  Get the app-specific data for a view
+      join         Join two views
       load         Cache STIX observation data in SQL
       lookup       Retrieve a view
       merge        Merge 2 or more views into a new view
       reassign     Update/replace STIX observation data in SQL
+      remove       Remove a view
+      rename       Remove a view
       schema       Get the schema of a view/table
       set-appdata  Set the app-specific data for a view
       sql          Run a SQL statement on the database [DANGEROUS!]
       tables       Get all view/table names
       type         Get the SCO type of a view/table
       values       Retrieve the values of a STIX object path from a view
+      viewdata     Get view data for views [default is all views]
       views        Get all view names
 
     $ firepit cache --help
