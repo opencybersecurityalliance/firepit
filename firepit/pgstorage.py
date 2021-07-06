@@ -106,8 +106,10 @@ class PgStorage(SqlStorage):
         try:
             cursor.execute(query, values)
         except psycopg2.errors.UndefinedColumn as e:
+            self.connection.rollback()
             raise InvalidAttr(str(e)) from e
         except psycopg2.errors.UndefinedTable as e:
+            self.connection.rollback()
             raise UnknownViewname(str(e)) from e
         self.connection.commit()
         return cursor
@@ -144,6 +146,7 @@ class PgStorage(SqlStorage):
                 cursor = self._execute('BEGIN;')
                 self._create_empty_view(viewname, cursor)
             except psycopg2.errors.InvalidTableDefinition:
+                self.connection.rollback()
                 raise IncompatibleType
         if tmp:
             self._execute(f'DROP VIEW IF EXISTS "{tmp}"', cursor)
