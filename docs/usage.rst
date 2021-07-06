@@ -22,6 +22,19 @@ attempt to connect to the PostgreSQL instance specified.
 As a tool
 ---------
 
+You can use the `firepit` command line tool to ingest and query your data.
+
+To make things easier, you can set a pair of environment variables:
+
+.. code-block::
+
+   export FIREPITDB=my_dbname
+   export FIREPITID=my_session_id
+
+`FIREPITDB` is your DB connection string.  `FIREPITID` is a "session" ID you
+can use to keep your data organized.
+
+
 .. code-block::
 
     Usage: firepit [OPTIONS] COMMAND [ARGS]...
