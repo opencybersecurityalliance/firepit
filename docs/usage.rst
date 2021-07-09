@@ -15,7 +15,7 @@ To use firepit in a project::
 After caching your STIX bundles, your database will contain the data.
 
 Passing a file path to `get_storage` will use sqlite3.  Passing in a
-PostgreSQL connection string (e.g. postgresql://...) will instead
+PostgreSQL connection URI (e.g. postgresql://...) will instead
 attempt to connect to the PostgreSQL instance specified.
 
 
@@ -31,12 +31,14 @@ To make things easier, you can set a pair of environment variables:
    export FIREPITDB=my_dbname
    export FIREPITID=my_session_id
 
-`FIREPITDB` is your DB connection string.  `FIREPITID` is a "session" ID you
-can use to keep your data organized.
+`FIREPITDB` is your DB filename (sqlite3) or connection URI
+(PostgreSQL).  `FIREPITID` is a "session" ID you can use to keep your
+data organized.
 
 
 .. code-block::
 
+    $ firepit --help
     Usage: firepit [OPTIONS] COMMAND [ARGS]...
 
       Columnar storage for STIX observations
