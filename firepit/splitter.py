@@ -149,8 +149,7 @@ class SqlWriter:
                 for obj in records:
                     self._replace(cursor, tablename, obj)
             else:
-                #self._insert(cursor, tablename, obj)
-                self.store.upsert(cursor, tablename, records, query_id)
+                self.store.upsert_many(cursor, tablename, records, query_id)
             cursor.execute('COMMIT')
         finally:
             cursor.close()
