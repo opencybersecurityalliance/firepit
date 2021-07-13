@@ -199,8 +199,11 @@ class SqlStorage:
         self.connection.commit()
         cursor.close()
 
-    def upsert(self, cursor, tablename, obj, query_id):
-        colnames = obj.keys()
+    def upsert(self, cursor, tablename, objs, query_id):
+        cols = set()
+        for obj in objs:
+            cols = cols.union(obj.keys())
+        colnames = list(cols)
         excluded = []
         for col in colnames:
             if col == 'first_observed':
@@ -215,18 +218,28 @@ class SqlStorage:
                 excluded.append(f'"{col}" = EXCLUDED."{col}"')
         excluded = ', '.join(excluded)
         valnames = ', '.join([f'"{x}"' for x in colnames])
-        placeholders = ', '.join([self.placeholder] * len(obj))
-        stmt = (f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
+        placeholders = ', '.join([f"({', '.join([self.placeholder] * len(colnames))})"] * len(objs))
+        stmt = (f'INSERT INTO "{tablename}" ({valnames}) VALUES {placeholders}'
                 f' ON CONFLICT (id) DO UPDATE SET {excluded};')
-        values = tuple([str(orjson.dumps(value), 'utf-8')
-                        if isinstance(value, list) else value for value in obj.values()])
+        values = []
+        query_values = []
+        for obj in objs:
+            query_values.append(obj['id'])
+            query_values.append(query_id)
+            for c in colnames:
+                if obj.get(c):
+                    value = obj[c]
+                    values.append(str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
+                else:
+                    values.append(None)
         logger.debug('_upsert: "%s"', stmt)
         cursor.execute(stmt, values)
 
         # Now add to query table as well
+        placeholders = ', '.join([f'({self.placeholder}, {self.placeholder})'] * len(objs))
         stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
-                f' VALUES ({self.placeholder}, {self.placeholder})')
-        cursor.execute(stmt, (obj['id'], query_id))
+                f' VALUES {placeholders}')
+        cursor.execute(stmt, query_values)
 
     def cache(self, query_id, bundles):
         """Cache the result of a query"""
