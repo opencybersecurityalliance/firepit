@@ -4,6 +4,7 @@ import random
 import re
 import string
 
+import orjson
 import psycopg2
 import psycopg2.extras
 
@@ -205,3 +206,33 @@ class PgStorage(SqlStorage):
         self._execute(f'DROP SCHEMA "{self.session_id}" CASCADE;', cursor)
         self.connection.commit()
         cursor.close()
+
+    def upsert_many(self, cursor, tablename, objs, query_id):
+        cols = set()
+        for obj in objs:
+            cols = cols.union(obj.keys())
+        colnames = list(cols)
+        excluded = self._get_excluded(colnames, tablename)
+        valnames = ', '.join([f'"{x}"' for x in colnames])
+        placeholders = ', '.join([f"({', '.join([self.placeholder] * len(colnames))})"] * len(objs))
+        stmt = (f'INSERT INTO "{tablename}" ({valnames}) VALUES {placeholders}'
+                f' ON CONFLICT (id) DO UPDATE SET {excluded};')
+        values = []
+        query_values = []
+        for obj in objs:
+            query_values.append(obj['id'])
+            query_values.append(query_id)
+            for c in colnames:
+                if obj.get(c):
+                    value = obj[c]
+                    values.append(str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
+                else:
+                    values.append(None)
+        logger.debug('_upsert: "%s"', stmt)
+        cursor.execute(stmt, values)
+
+        # Now add to query table as well
+        placeholders = ', '.join([f'({self.placeholder}, {self.placeholder})'] * len(objs))
+        stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
+                f' VALUES {placeholders}')
+        cursor.execute(stmt, query_values)

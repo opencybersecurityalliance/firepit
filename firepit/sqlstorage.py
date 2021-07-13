@@ -199,8 +199,7 @@ class SqlStorage:
         self.connection.commit()
         cursor.close()
 
-    def upsert(self, cursor, tablename, obj, query_id):
-        colnames = obj.keys()
+    def _get_excluded(self, colnames, tablename):
         excluded = []
         for col in colnames:
             if col == 'first_observed':
@@ -213,7 +212,11 @@ class SqlStorage:
                 continue
             else:
                 excluded.append(f'"{col}" = EXCLUDED."{col}"')
-        excluded = ', '.join(excluded)
+        return ', '.join(excluded)
+
+    def upsert(self, cursor, tablename, obj, query_id):
+        colnames = obj.keys()
+        excluded = self._get_excluded(colnames, tablename)
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([self.placeholder] * len(obj))
         stmt = (f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
@@ -227,6 +230,10 @@ class SqlStorage:
         stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
                 f' VALUES ({self.placeholder}, {self.placeholder})')
         cursor.execute(stmt, (obj['id'], query_id))
+
+    def upsert_many(self, cursor, tablename, objs, query_id):
+        for obj in objs:
+            self.upsert(cursor, tablename, obj, query_id)
 
     def cache(self, query_id, bundles):
         """Cache the result of a query"""

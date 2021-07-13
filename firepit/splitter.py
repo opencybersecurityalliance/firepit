@@ -145,12 +145,11 @@ class SqlWriter:
         try:
             cursor = self.store.connection.cursor()
             cursor.execute('BEGIN')
-            for obj in records:
-                if replace:
+            if replace:
+                for obj in records:
                     self._replace(cursor, tablename, obj)
-                else:
-                    #self._insert(cursor, tablename, obj)
-                    self.store.upsert(cursor, tablename, obj, query_id)
+            else:
+                self.store.upsert_many(cursor, tablename, records, query_id)
             cursor.execute('COMMIT')
         finally:
             cursor.close()
