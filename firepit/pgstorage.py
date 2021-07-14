@@ -78,8 +78,17 @@ class PgStorage(SqlStorage):
         except psycopg2.errors.DuplicateFunction:
             self.connection.rollback()
 
-        # Do DB initization
-        self._initdb(cursor)  # This commits
+        # Do DB initization from base class
+        stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
+                '(name TEXT, type TEXT, appdata TEXT);')
+        self._execute(stmt, cursor)
+        stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__membership" '
+                '(sco_id TEXT, var TEXT);')
+        self._execute(stmt, cursor)
+        stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__queries" '
+                '(sco_id TEXT, query_id TEXT);')
+        self._execute(stmt, cursor)
+        self.connection.commit()
         cursor.close()
 
         logger.debug("Connection to PostgreSQL DB %s successful", dbname)
