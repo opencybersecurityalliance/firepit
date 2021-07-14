@@ -255,28 +255,46 @@ def invert(obj):
     return [obj]
 
 
+def _mark_tree(objs, k, reffed):
+    reffed.add(k)
+    for attr, val in objs[k].items():
+        if attr.endswith('_ref'):
+            if val not in objs or val == k:
+                continue
+            _mark_tree(objs, val, reffed)
+        elif attr.endswith('_refs'):
+            for ref in val:
+                if ref not in objs or ref == k:
+                    continue
+                _mark_tree(objs, ref, reffed)
+
+
 def markroot(obj, viewname='observed-data'):
     if obj['type'] != 'observed-data':
         return [obj]
     objs = obj['objects']
     reffed = set()
-    for k, v in objs.items():
-        for attr, val in json_normalize(v, flat_lists=False).items():
+    for idx, sco in objs.items():
+        for attr, val in json_normalize(sco, flat_lists=False).items():
             if attr.endswith('_ref'):
-                if val not in objs or val == k:
+                if val not in objs or val == idx:
                     continue
-                if objs[k]['type'] == objs[val]['type']:
-                    reffed.add(val)
-                elif (objs[k]['type'] == 'network-traffic' and
+                # If an object refs another object of the same type,
+                # only mark the root (think process:parent_ref)
+                if objs[idx]['type'] == objs[val]['type']:
+                    _mark_tree(objs, val, reffed)
+                elif (objs[idx]['type'] == 'network-traffic' and
                       objs[val]['type'].endswith('-addr') and
                       'dst_' in attr):
                     # For src/dst pairs, consider the src as the root (so add dst to reffed)
                     reffed.add(val)
+                elif val in reffed:
+                    reffed.add(idx)
             elif attr.endswith('_refs'):
                 for ref in val:
-                    if ref not in objs or ref == k:
+                    if ref not in objs or ref == idx:
                         continue
-                    if objs[k]['type'] == objs[ref]['type']:
+                    if objs[idx]['type'] == objs[ref]['type']:
                         reffed.add(ref)
     for k, v in objs.items():
         if k not in reffed:
