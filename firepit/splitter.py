@@ -92,18 +92,6 @@ class SqlWriter:
     def _execute(self, stmt, cursor=None):
         return self.store._execute(stmt, cursor)
 
-    def _create_table(self, tablename, columns):
-        stmt = f'CREATE TABLE "{tablename}" ('
-        stmt += ','.join([f'"{colname}" {coltype}' for colname, coltype in columns.items()])
-        stmt += ');'
-        logger.debug('_create_table: "%s"', stmt)
-        cursor = self._execute(stmt)
-        self._execute(f'CREATE INDEX "{tablename}_id" ON "{tablename}" ("id");', cursor)
-        if 'x_contained_by_ref' in columns:
-            self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
-        self.store.connection.commit()
-        cursor.close()
-
     def _insert(self, cursor, tablename, obj):
         # We will see "duplicate" identity objects (e.g. same identity in multiple bundles)
         colnames = obj.keys()
@@ -131,7 +119,7 @@ class SqlWriter:
 
     def new_type(self, obj_type, schema):
         tablename = f'{self.prefix}{obj_type}'
-        self._create_table(tablename, schema)
+        self.store._create_table(tablename, schema)
 
     def new_property(self, obj_type, prop_name, prop_type):
         tablename = f'{self.prefix}{obj_type}'

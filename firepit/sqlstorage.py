@@ -142,6 +142,17 @@ class SqlStorage:
             stmt += f' OFFSET {offset}'
         return stmt
 
+    def _create_table(self, tablename, columns):
+        stmt = f'CREATE TABLE "{tablename}" ('
+        stmt += ','.join([f'"{colname}" {coltype}' for colname, coltype in columns.items()])
+        stmt += ');'
+        logger.debug('_create_table: "%s"', stmt)
+        cursor = self._execute(stmt)
+        if 'x_contained_by_ref' in columns:
+            self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+        self.connection.commit()
+        cursor.close()
+
     def _create_view(self, viewname, select, sco_type, deps=None, cursor=None):
         # This is DB-specific
         raise NotImplementedError('Storage._create_view')

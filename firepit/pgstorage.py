@@ -115,6 +115,18 @@ class PgStorage(SqlStorage):
         self.connection.commit()
         return cursor
 
+    def _create_table(self, tablename, columns):
+        # Same as base class, but disable WAL
+        stmt = f'CREATE UNLOGGED TABLE "{tablename}" ('
+        stmt += ','.join([f'"{colname}" {coltype}' for colname, coltype in columns.items()])
+        stmt += ');'
+        logger.debug('_create_table: "%s"', stmt)
+        cursor = self._execute(stmt)
+        if 'x_contained_by_ref' in columns:
+            self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+        self.connection.commit()
+        cursor.close()
+
     def _create_empty_view(self, viewname, cursor):
         cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as type WHERE 1<>1;')
 
