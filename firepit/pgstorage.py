@@ -1,8 +1,6 @@
 import logging
 import os
-import random
 import re
-import string
 
 import orjson
 import psycopg2
@@ -65,7 +63,7 @@ class PgStorage(SqlStorage):
         try:
             self._execute('''CREATE FUNCTION match(pattern TEXT, value TEXT)
                 RETURNS boolean AS $$
-                    SELECT regexp_match(value, pattern) != '{}'
+                    SELECT regexp_match(value, pattern) IS NOT NULL;
             $$ LANGUAGE SQL;''', cursor=cursor)
         except psycopg2.errors.DuplicateFunction:
             self.connection.rollback()
@@ -144,34 +142,23 @@ class PgStorage(SqlStorage):
         validate_name(viewname)
         if not cursor:
             cursor = self._execute('BEGIN;')
-        tmp = None
         if not deps:
             deps = []
         elif viewname in deps:
-            # Rename old view to random var
-            tmp = ''.join(random.choice(string.ascii_lowercase)
-                          for x in range(8))
-            self._execute(f'DROP VIEW IF EXISTS "{tmp}"', cursor)
+            # Get the query that makes up the current view
             slct = self._get_view_def(viewname)
-            self._create_view(tmp, slct, sco_type, cursor=cursor)
-            select = re.sub(f'"{viewname}"', tmp, select)
-        # Check if deps exist
-        tables = self.tables()
-        for dep in deps:
-            if dep not in tables:
-                break
-        else:
-            try:
-                self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {select}', cursor)
-            except psycopg2.errors.UndefinedTable:
-                self.connection.rollback()
-                cursor = self._execute('BEGIN;')
-                self._create_empty_view(viewname, cursor)
-            except psycopg2.errors.InvalidTableDefinition:
-                self.connection.rollback()
-                raise IncompatibleType
-        if tmp:
-            self._execute(f'DROP VIEW IF EXISTS "{tmp}"', cursor)
+            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            # Swap out the viewname for its definition
+            select = re.sub(f'"{viewname}"', f'({slct}) AS tmp', select)
+        try:
+            self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {select}', cursor)
+        except psycopg2.errors.UndefinedTable:
+            self.connection.rollback()
+            cursor = self._execute('BEGIN;')
+            self._create_empty_view(viewname, cursor)
+        except psycopg2.errors.InvalidTableDefinition:
+            self.connection.rollback()
+            raise IncompatibleType
         self._new_name(cursor, viewname, sco_type)
         return cursor
 
@@ -244,11 +231,8 @@ class PgStorage(SqlStorage):
             query_values.append(obj['id'])
             query_values.append(query_id)
             for c in colnames:
-                if obj.get(c):
-                    value = obj[c]
-                    values.append(str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
-                else:
-                    values.append(None)
+                value = obj.get(c, None)
+                values.append(str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
         logger.debug('_upsert: "%s"', stmt)
         cursor.execute(stmt, values)
 
