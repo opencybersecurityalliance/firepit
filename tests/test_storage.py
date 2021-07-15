@@ -278,15 +278,16 @@ def test_reassign(fake_bundle_file, fake_csv_file, tmpdir):
     for url in urls:
         url['x_enrich'] = 1
 
-    # Now reload into a new var
-    store.reassign('enriched_urls', urls)
+    # Now reload into the same var
+    store.reassign('urls', urls)
     rows = store.lookup('__membership')
     print(json.dumps(rows, indent=4))
-    rows = store.lookup('enriched_urls')
+    rows = store.lookup('urls')
     print(json.dumps(rows, indent=4))
     assert len(rows) == len(urls)
+    assert rows[0]['x_enrich'] == 1
 
-    # Make sure original var isn't modified
+    # Make sure original var length isn't modified
     urls = store.lookup('urls')
     assert len(urls) == 14
 
@@ -304,7 +305,7 @@ def test_appdata(fake_bundle_file, tmpdir):
     assert data['foo'] == result['foo']
     assert len(result) == len(data)
 
-    store2 = tmp_storage(tmpdir)
+    store2 = tmp_storage(tmpdir, clear=False)
     result = json.loads(store2.get_appdata('ssh_conns'))
     assert data['foo'] == result['foo']
     assert len(result) == len(data)
@@ -378,7 +379,6 @@ def test_merge(fake_bundle_file, tmpdir):
     assert merged == all_urls
 
 
-@pytest.mark.skip(reason="this only happens with postgresql")
 def test_change_type(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])
@@ -392,9 +392,7 @@ def test_change_type(fake_bundle_file, tmpdir):
     # Create a var `sorted_foo` of type url that depends on `foo`
     store.assign('sorted_foo', 'foo', op='sort', by='value')
 
-    # sqlite3 doesn't have issues with this; only PostgreSQL
-    with pytest.raises(IncompatibleType):
-        store.extract('foo', 'ipv4-addr', 'q1', "[ipv4-addr:value ISSUBSET '192.168.0.0/16']")
+    store.extract('foo', 'ipv4-addr', 'q1', "[ipv4-addr:value ISSUBSET '192.168.0.0/16']")
 
 
 def test_remove(fake_bundle_file, tmpdir):
@@ -462,3 +460,16 @@ def test_remove_after_merge(fake_bundle_file, tmpdir, names):
 
     merged = set(store.values('url:value', 'merged'))
     assert merged == all_urls
+
+
+def test_port_zero(fake_bundle_file_2, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file_2])
+
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
+
+    # sort by src_port and make sure port 0 comes first
+    store.assign('sconns', 'conns', op='sort', by='src_port')
+    conns = store.lookup('sconns')
+    assert conns[0]['src_port'] == 0
+    assert conns[0]['id'] == 'network-traffic--2171d844-d635-4f03-91cc-0a36f1caf3b6_2'

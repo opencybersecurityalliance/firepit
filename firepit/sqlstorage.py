@@ -107,7 +107,7 @@ class SqlStorage:
         if cols != "*":
             cols = ", ".join([f'"{col}"' if not col.startswith("'") else col for col in cols])
 
-        stmt = f'SELECT {cols} from "{tvname}"'
+        stmt = f'SELECT {cols} FROM "{tvname}"'
         if where:
             stmt += f' WHERE {where}'
         if groupby:
