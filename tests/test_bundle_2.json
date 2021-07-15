@@ -1,0 +1,405 @@
+{
+  "type": "bundle",
+  "id": "bundle--4ce87790-ac67-40c5-8ec5-70755b0e28cd",
+  "spec_version": "2.0",
+  "objects": [
+    {
+      "type": "identity",
+      "id": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.304Z",
+      "modified": "2021-07-14T19:45:16.866Z",
+      "name": "stix-generator.py",
+      "identity_class": "program"
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--2171d844-d635-4f03-91cc-0a36f1caf3b6",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.651Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:09.447726Z",
+      "last_observed": "2020-06-30T19:28:49.692424Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.212.97"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.141"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:09.447726Z",
+          "end": "2020-06-30T19:28:49.692424Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 0,
+          "dst_port": 0,
+          "protocols": [
+            "ip",
+            "tcp"
+          ]
+        },
+        "3": {
+          "type": "user-account",
+          "user_id": "1008",
+          "account_login": "henry"
+        }
+      }
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--827948c1-c4e9-49a5-85c7-5c25d375a890",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.412Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:10.723267Z",
+      "last_observed": "2020-06-30T19:25:34.983662Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.121.121"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.134"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:10.723267Z",
+          "end": "2020-06-30T19:25:34.983662Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 49434,
+          "dst_port": 3128,
+          "protocols": [
+            "ip",
+            "tcp",
+            "http"
+          ]
+        },
+        "3": {
+          "type": "url",
+          "value": "http://www27.example.com/page/64"
+        },
+        "4": {
+          "type": "user-account",
+          "user_id": "1002",
+          "account_login": "bob"
+        }
+      }
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--38b48bb3-d2cc-4a7f-8800-e8c643f295b7",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.510Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:13.068734Z",
+      "last_observed": "2020-06-30T19:26:03.959427Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.152.147"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.214"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:13.068734Z",
+          "end": "2020-06-30T19:26:03.959427Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 53557,
+          "dst_port": 8080,
+          "protocols": [
+            "ip",
+            "tcp",
+            "http"
+          ]
+        },
+        "3": {
+          "type": "url",
+          "value": "http://www77.example.com/page/1"
+        },
+        "4": {
+          "type": "user-account",
+          "user_id": "1010",
+          "account_login": "juan"
+        }
+      }
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--17dd077b-9ccb-4ab2-9d7e-be91f78f7d3f",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.464Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:20.119776Z",
+      "last_observed": "2020-06-30T19:26:40.634223Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.52.133"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.201"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:20.119776Z",
+          "end": "2020-06-30T19:26:40.634223Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 61700,
+          "dst_port": 514,
+          "protocols": [
+            "ip",
+            "tcp"
+          ]
+        },
+        "3": {
+          "type": "user-account",
+          "user_id": "1005",
+          "account_login": "eve"
+        }
+      }
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--4406e0b8-b0f7-4c0f-8085-0198efde7b12",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.660Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:23.518799Z",
+      "last_observed": "2020-06-30T19:27:04.736895Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.158.5"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.214"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:23.518799Z",
+          "end": "2020-06-30T19:27:04.736895Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 51111,
+          "dst_port": 514,
+          "protocols": [
+            "ip",
+            "tcp"
+          ]
+        },
+        "3": {
+          "type": "user-account",
+          "user_id": "1001",
+          "account_login": "alice"
+        }
+      }
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--98e544ee-5085-4ab2-abf0-efc5bf403e6e",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.475Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:23.521241Z",
+      "last_observed": "2020-06-30T19:29:39.826855Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.43.225"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.242"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:23.521241Z",
+          "end": "2020-06-30T19:29:39.826855Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 59408,
+          "dst_port": 514,
+          "protocols": [
+            "ip",
+            "tcp"
+          ]
+        },
+        "3": {
+          "type": "user-account",
+          "user_id": "1005",
+          "account_login": "eve"
+        }
+      }
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--fbca1584-d7b4-4b41-b408-ec1c90fda398",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.316Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:24.15486Z",
+      "last_observed": "2020-06-30T19:28:51.892722Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.107.220"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.73"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:24.15486Z",
+          "end": "2020-06-30T19:28:51.892722Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 61693,
+          "dst_port": 514,
+          "protocols": [
+            "ip",
+            "tcp"
+          ]
+        },
+        "3": {
+          "type": "user-account",
+          "user_id": "1010",
+          "account_login": "juan"
+        }
+      }
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--1d7276ba-7f98-4263-8645-b163a69001c6",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.523Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:26.91646Z",
+      "last_observed": "2020-06-30T19:25:27.89832Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.107.220"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.134"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:26.91646Z",
+          "end": "2020-06-30T19:25:27.89832Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 55606,
+          "dst_port": 22,
+          "protocols": [
+            "ip",
+            "tcp"
+          ]
+        },
+        "3": {
+          "type": "user-account",
+          "user_id": "1005",
+          "account_login": "eve"
+        }
+      }
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--67fc2b3a-d764-4357-8fc4-f1e30c4795e2",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.495Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:26.950946Z",
+      "last_observed": "2020-06-30T19:27:19.969637Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.219.106"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.134"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:26.950946Z",
+          "end": "2020-06-30T19:27:19.969637Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 58012,
+          "dst_port": 22,
+          "protocols": [
+            "ip",
+            "tcp"
+          ]
+        },
+        "3": {
+          "type": "user-account",
+          "user_id": "1013",
+          "account_login": "maria"
+        }
+      }
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--a871fdd3-2a8d-48c4-9e18-94799ea4e833",
+      "created_by_ref": "identity--89c5ac33-4656-4aa3-be68-f78879e5e273",
+      "created": "2020-06-30T19:31:23.491Z",
+      "modified": "2021-07-14T19:45:16.867Z",
+      "first_observed": "2020-06-30T19:25:27.798203Z",
+      "last_observed": "2020-06-30T19:26:11.871085Z",
+      "number_observed": 1,
+      "objects": {
+        "0": {
+          "type": "ipv4-addr",
+          "value": "192.168.157.211"
+        },
+        "1": {
+          "type": "ipv4-addr",
+          "value": "10.0.0.201"
+        },
+        "2": {
+          "type": "network-traffic",
+          "start": "2020-06-30T19:25:27.798203Z",
+          "end": "2020-06-30T19:26:11.871085Z",
+          "src_ref": "0",
+          "dst_ref": "1",
+          "src_port": 52143,
+          "dst_port": 22,
+          "protocols": [
+            "ip",
+            "tcp"
+          ]
+        },
+        "3": {
+          "type": "user-account",
+          "user_id": "1004",
+          "account_login": "david"
+        }
+      }
+    }
+  ]
+}
