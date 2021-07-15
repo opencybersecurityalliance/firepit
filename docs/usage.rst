@@ -44,7 +44,9 @@ data organized.
       Columnar storage for STIX observations
 
     Options:
-      --help  Show this message and exit.
+      --dbname TEXT   Path/name of database  [default: stix.db]
+      --session TEXT  Session ID to data separation  [default: test-id]
+      --help          Show this message and exit.
 
     Commands:
       assign       Perform an operation on a column and name the result
@@ -61,7 +63,7 @@ data organized.
       merge        Merge 2 or more views into a new view
       reassign     Update/replace STIX observation data in SQL
       remove       Remove a view
-      rename       Remove a view
+      rename       Rename a view
       schema       Get the schema of a view/table
       set-appdata  Set the app-specific data for a view
       sql          Run a SQL statement on the database [DANGEROUS!]
@@ -81,6 +83,4 @@ data organized.
       FILENAMES...  STIX bundle files of query results  [required]
 
     Options:
-      --dbname TEXT   Path/name of database  [default: stix.db]
-      --session TEXT  Session ID to data separation  [default: test-id]
-      --help          Show this message and exit.
+      --help  Show this message and exit.
