@@ -1,6 +1,8 @@
 import os
 import pytest
 
+collect_ignore = ['setup.py']
+
 
 @pytest.fixture
 def fake_bundle_file():
