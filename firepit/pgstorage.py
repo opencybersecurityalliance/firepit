@@ -220,11 +220,15 @@ class PgStorage(SqlStorage):
         for obj in objs:
             cols = cols.union(obj.keys())
         colnames = list(cols)
-        excluded = self._get_excluded(colnames, tablename)
+        if tablename == 'identity':
+            action = f'NOTHING'
+        else:
+            excluded = self._get_excluded(colnames, tablename)
+            action = f'UPDATE SET {excluded}'
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([f"({', '.join([self.placeholder] * len(colnames))})"] * len(objs))
         stmt = (f'INSERT INTO "{tablename}" ({valnames}) VALUES {placeholders}'
-                f' ON CONFLICT (id) DO UPDATE SET {excluded};')
+                f' ON CONFLICT (id) DO {action};')
         values = []
         query_values = []
         for obj in objs:
@@ -233,7 +237,8 @@ class PgStorage(SqlStorage):
             for c in colnames:
                 value = obj.get(c, None)
                 values.append(str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
-        logger.debug('_upsert: "%s"', stmt)
+        logger.debug('upsert_many: count=%d table=%s columns=%s action=%s"',
+                     len(objs), tablename, valnames, action)
         cursor.execute(stmt, values)
 
         # Now add to query table as well
