@@ -26,3 +26,12 @@ def ccoe_bundle():
 def fake_csv_file():
     cwd = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(cwd, 'test_procs.csv')
+
+
+@pytest.fixture
+def fake_bundle_list():
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    return [
+        os.path.join(cwd, 'conn_a.json'),
+        os.path.join(cwd, 'conn_b.json')
+    ]
