@@ -1,0 +1,50 @@
+{
+    "type": "bundle",
+    "id": "bundle--167dfcd4-8aeb-45d8-8934-166030dc1297",
+    "spec_version": "2.0",
+    "objects": [
+        {
+            "type": "identity",
+            "id": "identity--aef0e832-21ad-48b1-b7f4-49922ee97008",
+            "created": "2021-03-01T20:13:56.957Z",
+            "modified": "2021-03-01T20:13:56.957Z",
+            "name": "stix-generator.py",
+            "identity_class": "program"
+        },
+        {
+            "type": "observed-data",
+            "id": "observed-data--1f8605b8-84d8-4cf6-a71f-f3d52b67844d",
+            "created_by_ref": "identity--aef0e832-21ad-48b1-b7f4-49922ee97008",
+            "created": "2021-03-01T20:14:02.628Z",
+            "modified": "2021-03-01T20:14:02.628Z",
+            "first_observed": "2021-02-22T00:00:00.833739Z",
+            "last_observed": "2021-02-22T00:04:59.06578Z",
+            "number_observed": 1,
+            "objects": {
+                "0": {
+                    "type": "ipv4-addr",
+                    "value": "192.168.100.138"
+                },
+                "1": {
+                    "type": "ipv4-addr",
+                    "value": "192.168.1.152"
+                },
+                "2": {
+                    "type": "network-traffic",
+                    "start": "2021-02-22T00:00:00.833739Z",
+                    "end": "2021-02-22T00:04:59.06578Z",
+                    "src_ref": "0",
+                    "dst_ref": "1",
+                    "src_port": 52253,
+                    "dst_port": 22,
+                    "protocols": [
+                        "ip",
+                        "tcp"
+                    ],
+                    "src_byte_count": 602468,
+                    "dst_byte_count": 2709407
+                }
+            }
+        }
+    ]
+}
