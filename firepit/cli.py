@@ -47,12 +47,13 @@ def main(
 def cache(
     query_id: str = typer.Argument(..., help="An identifier for this set of data"),
     filenames: List[str] = typer.Argument(..., help="STIX bundle files of query results"),
+    batchsize: int = typer.Option(2000, help="Max objects to insert per statement"),
 ):
     """Cache STIX observation data in SQL"""
     db = get_storage(state['dbname'], state['session'])
     if isinstance(filenames, tuple):
         filenames = list(filenames)
-    db.cache(query_id, filenames)
+    db.cache(query_id, filenames, batchsize)
 
 
 @app.command()

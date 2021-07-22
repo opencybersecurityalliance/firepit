@@ -246,7 +246,7 @@ class SqlStorage:
         for obj in objs:
             self.upsert(cursor, tablename, obj, query_id)
 
-    def cache(self, query_id, bundles):
+    def cache(self, query_id, bundles, batchsize=2000):
         """Cache the result of a query"""
         logger.debug('Caching %s', query_id)
 
@@ -254,7 +254,7 @@ class SqlStorage:
             bundles = [bundles]
 
         writer = self._get_writer(str(query_id))
-        splitter = SplitWriter(writer, batchsize=1000, query_id=str(query_id))
+        splitter = SplitWriter(writer, batchsize=batchsize, query_id=str(query_id))
 
         # walk the bundles and figure out all the columns
         for bundle in bundles:

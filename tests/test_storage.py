@@ -1,9 +1,10 @@
 import ast
 import csv
-import json
+import ujson
 import pytest
 
 from collections import Counter
+from decimal import Decimal
 
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import UnknownViewname
@@ -27,7 +28,7 @@ def test_local(fake_bundle_file, tmpdir):
 
 def test_in_memory(fake_bundle_file, tmpdir):
     with open(fake_bundle_file, 'r') as fp:
-        bundle = json.loads(fp.read())
+        bundle = ujson.loads(fp.read())
 
     store = tmp_storage(tmpdir)
     store.cache('q1', bundle)
@@ -120,7 +121,7 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
         assert res == 'process'
     rows = store.lookup('test_procs')
     assert len(rows) == 5
-    assert isinstance(rows[0]['pid'], int)
+    assert isinstance(rows[0]['pid'], int) or isinstance(rows[0]['pid'], Decimal)
     ids = [row['id'] for row in rows]
     assert 'process--41eb677f-0335-49da-98b8-375e22f8c94e_0' in ids
     assert 'process--0bb2e61f-8c88-415d-bb7a-bcffc991c38e_0' in ids
@@ -272,7 +273,7 @@ def test_reassign(fake_bundle_file, fake_csv_file, tmpdir):
     store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
     urls = store.lookup('urls')
     assert len(urls) == 14
-    #print(json.dumps(urls, indent=4))
+    #print(ujson.dumps(urls, indent=4))
 
     # Simulate running some analytics to enrich these
     for url in urls:
@@ -281,9 +282,9 @@ def test_reassign(fake_bundle_file, fake_csv_file, tmpdir):
     # Now reload into the same var
     store.reassign('urls', urls)
     rows = store.lookup('__membership')
-    print(json.dumps(rows, indent=4))
+    print(ujson.dumps(rows, indent=4))
     rows = store.lookup('urls')
-    print(json.dumps(rows, indent=4))
+    print(ujson.dumps(rows, indent=4))
     assert len(rows) == len(urls)
     assert rows[0]['x_enrich'] == 1
 
@@ -300,13 +301,13 @@ def test_appdata(fake_bundle_file, tmpdir):
     store.cache('q1', [fake_bundle_file])
     store.extract('ssh_conns', 'network-traffic', 'q1', "[network-traffic:dst_port = 22]")
     data = {'foo': 99}
-    store.set_appdata('ssh_conns', json.dumps(data))
-    result = json.loads(store.get_appdata('ssh_conns'))
+    store.set_appdata('ssh_conns', ujson.dumps(data))
+    result = ujson.loads(store.get_appdata('ssh_conns'))
     assert data['foo'] == result['foo']
     assert len(result) == len(data)
 
     store2 = tmp_storage(tmpdir, clear=False)
-    result = json.loads(store2.get_appdata('ssh_conns'))
+    result = ujson.loads(store2.get_appdata('ssh_conns'))
     assert data['foo'] == result['foo']
     assert len(result) == len(data)
 
@@ -316,18 +317,18 @@ def test_viewdata(fake_bundle_file, tmpdir):
     store.cache('q1', [fake_bundle_file])
     store.extract('ssh_conns', 'network-traffic', 'q1', "[network-traffic:dst_port = 22]")
     ssh_data = {'foo': 99}
-    store.set_appdata('ssh_conns', json.dumps(ssh_data))
+    store.set_appdata('ssh_conns', ujson.dumps(ssh_data))
     store.extract('dns_conns', 'network-traffic', 'q1', "[network-traffic:dst_port = 53]")
     dns_data = {'bar': 98}
-    store.set_appdata('dns_conns', json.dumps(dns_data))
+    store.set_appdata('dns_conns', ujson.dumps(dns_data))
 
     results = store.get_view_data(['ssh_conns', 'dns_conns'])
     assert len(results) == 2
     for result in results:
         if result['name'] == 'ssh_conns':
-            assert ssh_data == json.loads(result['appdata'])
+            assert ssh_data == ujson.loads(result['appdata'])
         else:
-            assert dns_data == json.loads(result['appdata'])
+            assert dns_data == ujson.loads(result['appdata'])
 
 
 def test_duplicate(fake_bundle_file, tmpdir):
