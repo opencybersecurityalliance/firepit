@@ -18,7 +18,7 @@ def _infer_type(key, value):
     if key == 'id':
         rtype = 'TEXT UNIQUE'  # PRIMARY KEY'
     elif isinstance(value, int):
-        rtype = 'INTEGER'
+        rtype = 'NUMERIC'
     elif isinstance(value, float):
         rtype = 'REAL'
     elif isinstance(value, list):

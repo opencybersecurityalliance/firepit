@@ -10,6 +10,7 @@ from collections import OrderedDict
 
 import ijson
 import orjson
+import ujson
 import requests
 
 INVERTED_REFS = {
@@ -102,7 +103,7 @@ def _set_id(idx, obs, oid):
 def preserve(obj):
     '''Stash the "raw" STIX JSON as a stirng attribute in the object itself'''
     if obj['type'] == 'observed-data':
-        obj['x_stix'] = str(orjson.dumps(obj), 'utf-8')
+        obj['x_stix'] = ujson.dumps(obj)
     return [obj]
 
 

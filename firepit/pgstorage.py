@@ -27,7 +27,7 @@ def _infer_type(key, value):
     elif isinstance(value, bool):
         rtype = 'BOOLEAN'
     elif isinstance(value, int):
-        rtype = 'BIGINT'
+        rtype = 'NUMERIC'
     elif isinstance(value, float):
         rtype = 'REAL'
     elif isinstance(value, list):
