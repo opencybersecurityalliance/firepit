@@ -75,7 +75,7 @@ class SQLiteStorage(SqlStorage):
             else:
                 cursor.execute(query, values)
         except sqlite3.OperationalError as e:
-            logger.error('%s', e)
+            logger.error('%s', e, exc_info=e)
             if e.args[0].startswith("no such column"):
                 m = e.args[0].replace("no such column", "invalid attribute")
                 raise InvalidAttr(m) from e
@@ -167,19 +167,6 @@ class SQLiteStorage(SqlStorage):
             os.remove(self.dbname)
         except FileNotFoundError:
             pass
-
-    def rename_view(self, oldname, newname):
-        """Rename view `oldname` to `newname`"""
-        validate_name(oldname)
-        validate_name(newname)
-        view_type = self.table_type(oldname)
-        qry = self._get_view_def(oldname)
-        cursor = self._execute('BEGIN;')
-        self._create_view(newname, qry, view_type, cursor=cursor)
-        self._execute(f'DROP VIEW IF EXISTS "{oldname}"', cursor)
-        self._drop_name(cursor, oldname)
-        self.connection.commit()
-        cursor.close()
 
 
 def row_factory(cursor, row):

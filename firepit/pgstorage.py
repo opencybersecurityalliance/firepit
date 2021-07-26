@@ -153,12 +153,17 @@ class PgStorage(SqlStorage):
         try:
             self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {select}', cursor)
         except psycopg2.errors.UndefinedTable:
+            # Missing dep?
             self.connection.rollback()
             cursor = self._execute('BEGIN;')
             self._create_empty_view(viewname, cursor)
-        except psycopg2.errors.InvalidTableDefinition:
+        except psycopg2.errors.InvalidTableDefinition as e:
+            # Usually "cannot drop columns from view"
+            #logger.error(e, exc_info=e)
             self.connection.rollback()
-            raise IncompatibleType
+            cursor = self._execute('BEGIN;')
+            self._execute(f'DROP VIEW IF EXISTS "{viewname}";', cursor)
+            self._execute(f'CREATE VIEW "{viewname}" AS {select}', cursor)
         self._new_name(cursor, viewname, sco_type)
         return cursor
 
