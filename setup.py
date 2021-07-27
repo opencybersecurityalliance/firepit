@@ -16,7 +16,8 @@ requirements = [
     'orjson==3.3.1',
     'psycopg2-binary',
     'tabulate',
-    'typer'
+    'typer',
+    'ujson'
 ]
 
 setup_requirements = ['pytest-runner', ]
@@ -55,6 +56,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/IBM/firepit',
-    version='1.0.17',
+    version='1.0.18',
     zip_safe=False,
 )

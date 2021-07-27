@@ -38,6 +38,8 @@ def test_predicate(lhs, op, rhs, expected_len):
     'lhs, op, rhs, expected_text', [
         ('foo', '=', 'null', '("foo" IS NULL)'),
         ('bar', '!=', 'NULL', '("bar" IS NOT NULL)'),
+        ('baz[*]', '=', 'NULL', '("baz" IS NULL)'),
+        ('next.name[*]', '!=', 'null', '("next.name" IS NOT NULL)'),
     ]
 )
 def test_predicate_nulls(lhs, op, rhs, expected_text):

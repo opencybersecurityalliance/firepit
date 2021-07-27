@@ -480,3 +480,22 @@ def test_duplicate_identity(fake_bundle_list, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', fake_bundle_list)
     assert store.count('identity') == 1
+
+
+def test_clobber_viewname(fake_bundle_file_2, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file_2])
+
+    store.extract('conns1', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
+    store.extract('conns2', 'network-traffic', 'q1', "[network-traffic:dst_port > 1024]")
+    store.rename_view('conns2', 'conns1')  # Clobber conns1
+
+    # conns2 should be no more:
+    with pytest.raises(UnknownViewname):
+        store.lookup('conns2')
+
+    # Poke around more
+    cursor = store.connection.cursor()
+    cursor.execute("SELECT COUNT(*) c FROM __membership WHERE var = 'conns2'")
+    res = cursor.fetchall()
+    assert res[0]['c'] == 0

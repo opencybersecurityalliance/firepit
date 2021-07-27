@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 
 import orjson
@@ -565,9 +566,24 @@ class SqlStorage:
         validate_name(oldname)
         validate_name(newname)
         view_type = self.table_type(oldname)
+        view_def = self._get_view_def(oldname)
         cursor = self._execute('BEGIN;')
-        self._execute(f'ALTER VIEW "{oldname}" RENAME TO "{newname}";', cursor)
+
+        # Need to remove `newname` if it already exists
+        self._execute(f'DROP VIEW IF EXISTS "{newname}";', cursor)
+        self._drop_name(cursor, newname)
+
+        # Update membership table
+        self._execute(f"UPDATE __membership SET var = '{newname}' WHERE var = '{oldname}';", cursor)
+
+        # Now do the rename
+        qry = re.sub(f'var = \'{oldname}\'',  # This is an ugly hack
+                     f'var = \'{newname}\'',
+                     view_def)
+        self._create_view(newname, qry, view_type, cursor=cursor)
+        self._execute(f'DROP VIEW IF EXISTS "{oldname}"', cursor)
         self._drop_name(cursor, oldname)
         self._new_name(cursor, newname, view_type)
+
         self.connection.commit()
         cursor.close()

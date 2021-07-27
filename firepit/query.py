@@ -31,11 +31,12 @@ class Predicate:
             raise InvalidComparisonOperator(op)
         if lhs.endswith('[*]'):  # STIX list property
             lhs = lhs[:-3]
-            rhs = f"%{rhs}%"  # wrap with SQL wildcards since list is encoded as string
-            if op == '=':
-                op = 'LIKE'
-            elif op == '!=':
-                op = 'NOT LIKE'
+            if rhs.lower() != 'null':
+                rhs = f"%{rhs}%"  # wrap with SQL wildcards since list is encoded as string
+                if op == '=':
+                    op = 'LIKE'
+                elif op == '!=':
+                    op = 'NOT LIKE'
         self.lhs = lhs
         self.op = op
         self.rhs = rhs
