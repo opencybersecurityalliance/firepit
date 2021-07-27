@@ -10,7 +10,9 @@ Firepit - STIX Columnar Storage
         :target: https://firepit.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-
+.. image:: https://github.com/opencybersecurityalliance/firepit/workflows/Project%20Test/badge.svg
+        :target: https://github.com/opencybersecurityalliance/firepit
+        :alt: Unit Test Status
 
 
 Columnar storage for STIX 2.0 observations.
