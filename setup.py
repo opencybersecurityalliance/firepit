@@ -16,7 +16,8 @@ requirements = [
     'orjson==3.3.1',
     'psycopg2-binary',
     'tabulate',
-    'typer'
+    'typer',
+    'ujson'
 ]
 
 setup_requirements = ['pytest-runner', ]
