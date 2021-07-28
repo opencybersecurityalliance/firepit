@@ -56,6 +56,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/IBM/firepit',
-    version='1.0.18',
+    version='1.1.0',
     zip_safe=False,
 )
