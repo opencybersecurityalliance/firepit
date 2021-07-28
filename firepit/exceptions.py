@@ -36,3 +36,7 @@ class IncompatibleType(Exception):
 
 class UnknownViewname(Exception):
     pass
+
+
+class DuplicateTable(Exception):
+    pass

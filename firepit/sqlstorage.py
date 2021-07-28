@@ -34,6 +34,22 @@ def _transform(ops, filename):
             yield result
 
 
+def infer_type(key, value):
+    if key == 'id':
+        rtype = 'TEXT UNIQUE'
+    elif key == 'number_observed':
+        rtype = 'NUMERIC'
+    elif isinstance(value, int):
+        rtype = 'NUMERIC'
+    elif isinstance(value, float):
+        rtype = 'REAL'
+    elif isinstance(value, list):
+        rtype = 'TEXT'
+    else:
+        rtype = 'TEXT'
+    return rtype
+
+
 class SqlStorage:
     def __init__(self):
         self.connection = None  # Python DB API connection object
@@ -153,6 +169,11 @@ class SqlStorage:
             self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
         self.connection.commit()
         cursor.close()
+
+    def _add_column(self, tablename, prop_name, prop_type):
+        stmt = f'ALTER TABLE "{tablename}" ADD COLUMN "{prop_name}" {prop_type};'
+        logger.debug('new_property: "%s"', stmt)
+        self._execute(stmt)
 
     def _create_view(self, viewname, select, sco_type, deps=None, cursor=None):
         # This is DB-specific
