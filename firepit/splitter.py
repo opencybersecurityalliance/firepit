@@ -6,26 +6,14 @@ from collections import OrderedDict, defaultdict
 import orjson
 
 from firepit import raft
+from firepit.exceptions import DuplicateTable
+
 
 logger = logging.getLogger(__name__)
 
 
 def _strip_prefix(s, prefix):
     return s[len(prefix):] if s.startswith(prefix) else s
-
-
-def _infer_type(key, value):
-    if key == 'id':
-        rtype = 'TEXT UNIQUE'  # PRIMARY KEY'
-    elif isinstance(value, int):
-        rtype = 'NUMERIC'
-    elif isinstance(value, float):
-        rtype = 'REAL'
-    elif isinstance(value, list):
-        rtype = 'TEXT'
-    else:
-        rtype = 'TEXT'
-    return rtype
 
 
 class JsonWriter:
@@ -73,12 +61,12 @@ class JsonWriter:
 
 class SqlWriter:
     """
-    Writes STIX objects to a SQLite DB, one table per type
+    Writes STIX objects to a SQL DB, one table per type
     """
 
     def __init__(self, filedir, store, prefix='',
                  placeholder='?',
-                 infer_type=_infer_type):
+                 infer_type=None):
         self.filedir = filedir
         self.store = store
         if prefix and not prefix.endswith('_'):
@@ -123,10 +111,7 @@ class SqlWriter:
 
     def new_property(self, obj_type, prop_name, prop_type):
         tablename = f'{self.prefix}{obj_type}'
-        stmt = f'ALTER TABLE "{tablename}" ADD COLUMN "{prop_name}" {prop_type};'
-        logger.debug('new_property: "%s"', stmt)
-        cursor = self._execute(stmt)
-        self.store.connection.commit()
+        self.store._add_column(tablename, prop_name, prop_type)
 
     def write_records(self, obj_type, records, _, replace, query_id):
         tablename = f'{self.prefix}{obj_type}'
@@ -172,10 +157,12 @@ class SplitWriter:
     def __del__(self):
         pass
 
+    def _load_schema(self, obj_type):
+        return {col['name']: col['type'] for col in self.writer.properties(obj_type)}
+
     def _load_schemas(self):
         for obj_type in self.writer.types():
-            schema = {col['name']: col['type'] for col in self.writer.properties(obj_type)}
-            self.schemas[obj_type] = schema
+            self.schemas[obj_type] = self._load_schema(obj_type)
 
     def write(self, obj):
         """Consume `obj` (actual writing to storage may be deferred)"""
@@ -198,7 +185,15 @@ class SplitWriter:
                 new_columns[key] = col_type
         if add_table:
             self.schemas[obj_type] = schema
-            self.writer.new_type(obj_type, schema)
+            try:
+                self.writer.new_type(obj_type, schema)
+            except DuplicateTable:
+                # Refresh schemas
+                loaded_schema = self._load_schema(obj_type)
+                new_columns = {}
+                for key in set(schema) - set(loaded_schema):
+                    new_columns[key] = schema[key]
+                    add_col = True
         if add_col:
             for col, col_type in new_columns.items():
                 self.writer.new_property(obj_type, col, col_type)

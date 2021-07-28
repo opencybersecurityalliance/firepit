@@ -6,11 +6,12 @@ import orjson
 import psycopg2
 import psycopg2.extras
 
-from firepit.exceptions import IncompatibleType
+from firepit.exceptions import DuplicateTable
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
+from firepit.sqlstorage import infer_type
 from firepit.sqlstorage import validate_name
 
 logger = logging.getLogger(__name__)
@@ -22,18 +23,13 @@ def get_storage(url, session_id):
 
 
 def _infer_type(key, value):
-    if key == 'id':
-        rtype = 'TEXT UNIQUE'
-    elif isinstance(value, bool):
+    # PostgreSQL type specializations
+    rtype = None
+    if isinstance(value, bool):
         rtype = 'BOOLEAN'
-    elif isinstance(value, int):
-        rtype = 'NUMERIC'
-    elif isinstance(value, float):
-        rtype = 'REAL'
-    elif isinstance(value, list):
-        rtype = 'TEXT'
     else:
-        rtype = 'TEXT'
+        # Fall back to defaults
+        rtype = infer_type(key, value)
     return rtype
 
 
@@ -54,40 +50,40 @@ class PgStorage(SqlStorage):
         self.connection = psycopg2.connect(
             connstring,
             cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor = self.connection.cursor()
 
         if session_id:
-            self._execute(f'CREATE SCHEMA IF NOT EXISTS "{session_id}";', cursor=cursor)
-            self._execute(f'SET search_path TO "{session_id}";', cursor=cursor)
+            try:
+                self._execute(f'CREATE SCHEMA IF NOT EXISTS "{session_id}";')
+            except psycopg2.errors.UniqueViolation:
+                self.connection.rollback()
 
+        self._execute(f'SET search_path TO "{session_id}";')
+
+        cursor = self._execute('BEGIN;')
         try:
             self._execute('''CREATE FUNCTION match(pattern TEXT, value TEXT)
                 RETURNS boolean AS $$
                     SELECT regexp_match(value, pattern) IS NOT NULL;
             $$ LANGUAGE SQL;''', cursor=cursor)
-        except psycopg2.errors.DuplicateFunction:
-            self.connection.rollback()
-
-        try:
             self._execute('''CREATE FUNCTION in_subnet(addr TEXT, net TEXT)
                 RETURNS boolean AS $$
                     SELECT addr::inet <<= net::inet;
             $$ LANGUAGE SQL;''', cursor=cursor)
+
+            # Do DB initization from base class
+            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
+                    '(name TEXT, type TEXT, appdata TEXT);')
+            self._execute(stmt, cursor)
+            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__membership" '
+                    '(sco_id TEXT, var TEXT);')
+            self._execute(stmt, cursor)
+            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__queries" '
+                    '(sco_id TEXT, query_id TEXT);')
+            self._execute(stmt, cursor)
+            self.connection.commit()
+            cursor.close()
         except psycopg2.errors.DuplicateFunction:
             self.connection.rollback()
-
-        # Do DB initization from base class
-        stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
-                '(name TEXT, type TEXT, appdata TEXT);')
-        self._execute(stmt, cursor)
-        stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__membership" '
-                '(sco_id TEXT, var TEXT);')
-        self._execute(stmt, cursor)
-        stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__queries" '
-                '(sco_id TEXT, query_id TEXT);')
-        self._execute(stmt, cursor)
-        self.connection.commit()
-        cursor.close()
 
         logger.debug("Connection to PostgreSQL DB %s successful", dbname)
 
@@ -128,11 +124,27 @@ class PgStorage(SqlStorage):
         stmt += ','.join([f'"{colname}" {coltype}' for colname, coltype in columns.items()])
         stmt += ');'
         logger.debug('_create_table: "%s"', stmt)
-        cursor = self._execute(stmt)
-        if 'x_contained_by_ref' in columns:
-            self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
-        self.connection.commit()
-        cursor.close()
+        try:
+            cursor = self._execute(stmt)
+            if 'x_contained_by_ref' in columns:
+                self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+            self.connection.commit()
+            cursor.close()
+        except (psycopg2.errors.DuplicateTable,
+                psycopg2.errors.DuplicateObject,
+                psycopg2.errors.UniqueViolation) as e:
+            self.connection.rollback()
+            raise DuplicateTable(tablename) from e
+
+    def _add_column(self, tablename, prop_name, prop_type):
+        stmt = f'ALTER TABLE "{tablename}" ADD COLUMN "{prop_name}" {prop_type};'
+        logger.debug('new_property: "%s"', stmt)
+        try:
+            cursor = self._execute(stmt)
+            self.connection.commit()
+            cursor.close()
+        except psycopg2.errors.DuplicateColumn:
+            self.connection.rollback()
 
     def _create_empty_view(self, viewname, cursor):
         cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as type WHERE 1<>1;')
@@ -157,7 +169,7 @@ class PgStorage(SqlStorage):
             self.connection.rollback()
             cursor = self._execute('BEGIN;')
             self._create_empty_view(viewname, cursor)
-        except psycopg2.errors.InvalidTableDefinition as e:
+        except psycopg2.errors.InvalidTableDefinition:
             # Usually "cannot drop columns from view"
             #logger.error(e, exc_info=e)
             self.connection.rollback()
@@ -226,7 +238,7 @@ class PgStorage(SqlStorage):
             cols = cols.union(obj.keys())
         colnames = list(cols)
         if tablename == 'identity':
-            action = f'NOTHING'
+            action = 'NOTHING'
         else:
             excluded = self._get_excluded(colnames, tablename)
             action = f'UPDATE SET {excluded}'

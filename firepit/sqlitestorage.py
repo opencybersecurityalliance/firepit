@@ -6,10 +6,12 @@ import re
 import sqlite3
 import string
 
+from firepit.exceptions import DuplicateTable
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
+from firepit.sqlstorage import infer_type
 from firepit.sqlstorage import validate_name
 
 logger = logging.getLogger(__name__)
@@ -58,12 +60,7 @@ class SQLiteStorage(SqlStorage):
     def _get_writer(self, prefix):
         """Get a DB inserter object"""
         filedir = os.path.dirname(self.dbname)
-        return SqlWriter(filedir, self)
-
-    def __del__(self):
-        if self.connection:
-            logger.debug("Closing SQLite DB connection")
-            self.connection.close()
+        return SqlWriter(filedir, self, infer_type=infer_type)
 
     def _do_execute(self, query, values=None, cursor=None):
         if not cursor:
@@ -75,7 +72,7 @@ class SQLiteStorage(SqlStorage):
             else:
                 cursor.execute(query, values)
         except sqlite3.OperationalError as e:
-            logger.error('%s', e, exc_info=e)
+            logger.debug('%s', e)  #, exc_info=e)
             if e.args[0].startswith("no such column"):
                 m = e.args[0].replace("no such column", "invalid attribute")
                 raise InvalidAttr(m) from e
@@ -85,7 +82,7 @@ class SQLiteStorage(SqlStorage):
             elif e.args[0].startswith("no such table: "):
                 raise UnknownViewname(e.args[0]) from e
             else:
-                raise Exception('Internal error: ' + e.args[0]) from e
+                raise e  # See if caller wants special behavior
         return cursor
 
     def _execute(self, statement, cursor=None):
@@ -115,6 +112,38 @@ class SQLiteStorage(SqlStorage):
         self._execute(f'CREATE VIEW "{viewname}" AS {select}', cursor)
         self._new_name(cursor, viewname, sco_type)
         return cursor
+
+    def _create_table(self, tablename, columns):
+        stmt = f'CREATE TABLE "{tablename}" ('
+        stmt += ','.join([f'"{colname}" {coltype}' for colname, coltype in columns.items()])
+        stmt += ');'
+        logger.debug('_create_table: "%s"', stmt)
+        try:
+            cursor = self._execute(stmt)
+        except sqlite3.OperationalError as e:
+            self.connection.rollback()
+            logger.debug('_create_table: %s', e)  #, exc_info=e)
+            if e.args[0].startswith(f'table "{tablename}" already exists'):
+                raise DuplicateTable(tablename)
+        if 'x_contained_by_ref' in columns:
+            self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+        self.connection.commit()
+        cursor.close()
+
+    def _add_column(self, tablename, prop_name, prop_type):
+        stmt = f'ALTER TABLE "{tablename}" ADD COLUMN "{prop_name}" {prop_type};'
+        logger.debug('new_property: "%s"', stmt)
+        try:
+            cursor = self._execute(stmt)
+            self.connection.commit()
+            cursor.close()
+        except sqlite3.OperationalError as e:
+            self.connection.rollback()
+            logger.debug('%s', e)  #, exc_info=e)
+            if e.args[0].startswith(f'duplicate column name: '):
+                pass
+            else:
+                raise Exception('Internal error: ' + e.args[0]) from e
 
     def _get_view_def(self, viewname):
         view = self._query(("SELECT sql from sqlite_master"
