@@ -85,7 +85,7 @@ class SqlWriter:
         colnames = obj.keys()
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([self.placeholder] * len(obj))
-        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders}) ON CONFLICT DO NOTHING;'
+        stmt = f'INSERT INTO {self.store.db_schema_prefix}"{tablename}" ({valnames}) VALUES ({placeholders}) ON CONFLICT DO NOTHING;'
         values = tuple([str(orjson.dumps(value), 'utf-8')
                         if isinstance(value, list) else value for value in obj.values()])
         #logger.debug('_insert: "%s"', stmt)
@@ -95,7 +95,7 @@ class SqlWriter:
         colnames = obj.keys()
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([self.placeholder] * len(obj))
-        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders}) ON CONFLICT (id) DO '
+        stmt = f'INSERT INTO {self.store.db_schema_prefix}"{tablename}" ({valnames}) VALUES ({placeholders}) ON CONFLICT (id) DO '
         valnames = [f'"{col}" = EXCLUDED."{col}"' for col in colnames if col != 'id']
         valnames = ', '.join(valnames)
         stmt += f'UPDATE SET {valnames};'

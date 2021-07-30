@@ -63,6 +63,8 @@ class SqlStorage:
         # Function that returns first non-null arg_type
         self.ifnull = 'IFNULL'
 
+        self.db_schema_prefix = ''
+
     def _get_writer(self, prefix):
         """Get a DB inserter object"""
         # This is DB-specific
