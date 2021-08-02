@@ -13,7 +13,7 @@ with open('HISTORY.rst') as history_file:
 requirements = [
     'ijson',
     'lark-parser',
-    'orjson==3.3.1',
+    'orjson>=3.3.1',
     'psycopg2-binary',
     'tabulate',
     'typer',
