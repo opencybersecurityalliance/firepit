@@ -13,7 +13,7 @@ with open('HISTORY.rst') as history_file:
 requirements = [
     'ijson',
     'lark-parser',
-    'orjson==3.3.1',
+    'orjson>=3.3.1',
     'psycopg2-binary',
     'tabulate',
     'typer',
@@ -56,6 +56,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/IBM/firepit',
-    version='1.1.0',
+    version='1.1.1',
     zip_safe=False,
 )
