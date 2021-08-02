@@ -13,7 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python-version: ['3.6', '3.7', '3.8', '3.9']
+        python-version: ['3.7', '3.8', '3.9']
     steps:
       - uses: actions/checkout@v2
       - name: Set up Python
@@ -23,8 +23,6 @@ jobs:
       - name: Install testing dependencies
         run: |
           python -m pip install --upgrade pip wheel
-          python -m pip install -r requirements.txt
-          python -m pip install requests pytest
-          python -m pip install .
+          make setup
       - name: Run all tests
-        run: pytest -vv
+        run: make test
