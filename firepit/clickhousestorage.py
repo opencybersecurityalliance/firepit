@@ -336,18 +336,18 @@ class ClickhouseStorage(SqlStorage):
 
     def _new_name(self, cursor, name, sco_type):
         stmt = (f'INSERT INTO {self.db_schema_prefix}"__symtable" (name, type)'
-                f' VALUES (\'{name}\', \'{sco_type}\');')
-        cursor.execute(stmt)
+                f' VALUES ({self.placeholder}, {self.placeholder})')
+        cursor.execute(stmt,(name,sco_type))
 
     def _drop_name(self, cursor, name):
-        stmt = f'ALTER TABLE {self.db_schema_prefix}"__symtable" DELETE WHERE name = \'{name}\';'
-        cursor.execute(stmt)
+        stmt = f'ALTER TABLE {self.db_schema_prefix}"__symtable" DELETE WHERE name = {self.placeholder}'
+        cursor.execute(stmt,(name))
 
     def _get_view_def(self, viewname):
         cursor = self._query("SELECT create_table_query"
                              " FROM system.tables"
-                             " WHERE database = '%s'"
-                             " AND name = '%s'"%(self.session_id, viewname))
+                             f" WHERE database = {self.placeholder}"
+                             f" AND name = {self.placeholder}",(self.session_id, viewname))
         viewdef = cursor.fetchone()
         stmt = viewdef['create_table_query'].rstrip(';')
         # Clickhouse contains the entire create view statement
@@ -357,7 +357,7 @@ class ClickhouseStorage(SqlStorage):
     def tables(self):
         cursor = self._query("SELECT name"
                              " FROM system.tables"
-                             " WHERE database = '%s'"%(self.session_id))
+                             f" WHERE database = {self.placeholder}",(self.session_id,))
         rows = cursor.fetchall()
         return [i['name'] for i in rows
                 if not i['name'].startswith('__')]
@@ -365,8 +365,8 @@ class ClickhouseStorage(SqlStorage):
     def views(self):
         cursor = self._query("SELECT name"
                              " FROM system.tables"
-                             " WHERE database = '%s'"
-                             " AND engine = 'View'"%(self.session_id ))
+                             f" WHERE database = {self.placeholder}"
+                             " AND engine = 'View'",(self.session_id, ))
         rows = cursor.fetchall()
         return [i['name'] for i in rows]
 
@@ -387,8 +387,8 @@ class ClickhouseStorage(SqlStorage):
         validate_name(viewname)
         cursor = self._query("SELECT name AS name, type AS type"
                              " FROM system.columns"
-                             " WHERE database = '%s'"
-                             " AND table = '%s'"%(self.session_id, viewname))
+                             " WHERE database = ?"
+                             " AND table = ?",(self.session_id, viewname))
         return [{k: v for k, v in row.items() if k in ['name', 'type']}
                 for row in cursor.fetchall()]
 
@@ -509,7 +509,7 @@ class ClickhouseStorage(SqlStorage):
         """Remove view `viewname`"""
         validate_name(viewname)
         cursor = self.connection.cursor()
-        self._execute(f'DROP VIEW IF EXISTS {self.db_schema_prefix}"{viewname}";', cursor)
+        self._execute(f'DROP VIEW IF EXISTS {self.db_schema_prefix}"{viewname}"', cursor)
         self._drop_name(cursor, viewname)
         cursor.close()
 
