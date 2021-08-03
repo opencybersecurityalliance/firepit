@@ -350,9 +350,8 @@ class ClickhouseStorage(SqlStorage):
                              " AND name = '%s'"%(self.session_id, viewname))
         viewdef = cursor.fetchone()
         stmt = viewdef['create_table_query'].rstrip(';')
-        # PostgreSQL will "expand" the original "*" to the columns
-        # that existed at that time.  We need to get the star back, to
-        # match SQLite3's behavior.
+        # Clickhouse contains the entire create view statement
+        # so we need to strip out everything but the select part
         return re.sub(r'^.*?FROM', 'SELECT * FROM', stmt, 1, re.DOTALL)
 
     def tables(self):
