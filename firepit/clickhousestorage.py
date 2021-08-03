@@ -1,29 +1,23 @@
 import logging
 import os
 import re
-import time
-import traceback
-
 import orjson
-import psycopg2
-import psycopg2.extras
+import jaydebeapi
 
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import InvalidAttr
-from firepit.exceptions import UnknownViewname
+from firepit.exceptions import InvalidObject
+from firepit.exceptions import StixPatternError
 from firepit.splitter import SqlWriter
+from firepit.splitter import SplitWriter
 from firepit.sqlstorage import SqlStorage
-from firepit.sqlstorage import validate_name
-from firepit.query import Table
-from firepit.query import Join
-import jaydebeapi
-
-from firepit.stix20 import stix2sql
-
-from firepit.props import auto_agg
-from firepit.props import primary_prop
 from firepit.validate import validate_name
 from firepit.validate import validate_path
+from firepit.query import Table
+from firepit.query import Join
+from firepit.stix20 import stix2sql
+from firepit.props import auto_agg
+
 
 
 logger = logging.getLogger(__name__)
@@ -53,15 +47,14 @@ def _infer_type(key, value):
 
 class ConnectionWrapper():
     def __init__(self, connection):
-         self.connection = connection
+        self.connection = connection
 
     def cursor(self):
         cursor =self.connection.cursor()
-        return CursorWrapper(cursor);
+        return CursorWrapper(cursor)
 
     def close(self):
-        if not self.connection._closed:
-            self.connection.close()
+        self.connection.close()
 
     def commit(self):
         self.connection.commit()
@@ -70,35 +63,33 @@ class ConnectionWrapper():
         return self.connection._closed
 
 class CursorWrapper():
-    def __init__(self, cursor,defaultDB=None):
-         self.cursor = cursor
-         #self.defaultDB = defaultDB
+    def __init__(self, cursor):
+        self.cursor = cursor
 
     def execute(self,query_text,query_values=None):
-        #if self.defaultDB:
-        #    self.cursor.execute(f"USE \"{self.defaultDB}\"")
-        if query_text.lower()=='begin' or query_text.lower()=='begin;' or query_text.lower()=='commit' or query_text.lower()=='commit;':
-            return
-        else:
+        if not (query_text.lower()=='begin'
+                or query_text.lower()=='begin;'
+                or query_text.lower()=='commit'
+                or query_text.lower()=='commit;'):
             index=0
-            while query_text.find("?") and not query_values==None and index<len(query_values):
+            while query_text.find("?") and not query_values is None and index<len(query_values):
                 value =  query_values[index]
                 if isinstance(value, str):
                     value=f"'{value}'"
                 query_text = query_text.replace("?",value,1)
                 index = index+1
-            return self.cursor.execute(query_text)
+            self.cursor.execute(query_text)
 
     def fetchall(self):
         convertedResult = []
-        if self.cursor==None:
-            return convertedResult;
+        if self.cursor is None:
+            return convertedResult
         result =  self.cursor.fetchall()
-        if result == None:
-            return convertedResult;
+        if result is None:
+            return convertedResult
         for row in result:
             convertedRow={}
-            for index in range(0,len(self.cursor.description)):
+            for index,value in enumerate(self.cursor.description):
                 # Check for java numeric types being returned
                 if not isinstance(row[index], str) and row[index] is not None and str(row[index]).isnumeric():
                     convertedRow[self.cursor.description[index][0]]=int(str(row[index]))
@@ -110,12 +101,12 @@ class CursorWrapper():
 
     def fetchone(self):
         convertedResult = {}
-        if self.cursor==None:
-            return convertedResult;
+        if self.cursor is None:
+            return convertedResult
         result =  self.cursor.fetchone()
-        if result == None:
-            return convertedResult;
-        for index in range(0,len(self.cursor.description)):
+        if result is None:
+            return convertedResult
+        for index,value in enumerate(self.cursor.description):
             if not isinstance(result[index], str) and result[index] is not None and str(result[index]).isnumeric():
                 convertedResult[self.cursor.description[index][0]]=int(str(result[index]))
             else:
@@ -176,7 +167,7 @@ class ClickhouseStorage(SqlStorage):
         logger.debug("Closing Clickhouse DB connection")
         try:
             self.connection.close()
-        except:
+        except Exception:
             pass
 
     def table_type(self, viewname):
@@ -194,12 +185,12 @@ class ClickhouseStorage(SqlStorage):
         try:
             view_type = self.table_type(oldname)
             cursor = self.connection.cursor()
-            self._execute(f'RENAME TABLE {self.db_schema_prefix}"{oldname}"  TO {self.db_schema_prefix}"{newname}"', cursor)
+            self._execute(f'RENAME TABLE {self.db_schema_prefix}"{oldname}"  TO {self.db_schema_prefix}"{newname}"',
+                            cursor)
             self._drop_name(cursor, oldname)
             self._new_name(cursor, newname, view_type)
             cursor.close()
-        except:
-
+        except Exception:
             pass
 
     def lookup(self, viewname, cols="*", limit=None, offset=None):
@@ -213,18 +204,14 @@ class ClickhouseStorage(SqlStorage):
                     raise InvalidAttr(f"{col}")
         try:
             stmt = self._select(f'{viewname}', cols=cols, limit=limit, offset=offset)
-
-
             cursor = self._query(stmt)
             result =cursor.fetchall()
-
             return result
         except Exception:
-                return []
+            return []
 
 
     def run_query(self, query):
-
         for i in range(0,len(query.stages)):
             if isinstance(query.stages[i], Table):
                 query.stages[i].name = f'{self.session_id}"."{query.stages[i].name}'
@@ -256,8 +243,6 @@ class ClickhouseStorage(SqlStorage):
     def _select(self, tvname, cols="*", sortby=None, groupby=None,
                 ascending=True, limit=None, offset=None, where=None):
         """Generate a SELECT query on table or view `tvname`"""
-        # TODO: Deprecate this in favor of query module
-        #validate_name(tvname)
         if cols != "*":
             cols = ", ".join([f'"{col}"' if not col.startswith("'") else col for col in cols])
 
@@ -265,7 +250,7 @@ class ClickhouseStorage(SqlStorage):
         if where:
             stmt += f' WHERE {where}'
         if groupby:
-            #validate_path(groupby)
+            validate_path(groupby)
             # For grouping, we need to aggregate data in the columns.
             aggs = [
                 'MIN("type") as "type"',
@@ -283,7 +268,8 @@ class ClickhouseStorage(SqlStorage):
             stmt = f'SELECT {group_cols} from {self.db_schema_prefix}"{tvname}"'
             stmt += f' GROUP BY "{groupby}"'
         if sortby:
-            #validate_path(sortby)
+            #
+            validate_path(sortby)
             stmt += f' ORDER BY "{sortby}" ' + ('ASC' if ascending else 'DESC')
         if limit:
             if not isinstance(limit, int):
@@ -305,14 +291,15 @@ class ClickhouseStorage(SqlStorage):
     def _create_table(self, tablename, columns):
         # Same as base class, but disable WAL
         stmt = f'CREATE TABLE {self.db_schema_prefix}"{tablename}" ('
-        stmt += ','.join([f'"{colname}" {coltype}' for colname, coltype in columns.items()])
+        stmt += ','.join([f'"{colname}" {coltype}' for colname,
+                coltype in columns.items()])
         stmt += ') ENGINE=MergeTree() primary key tuple();'
         logger.debug('_create_table: "%s"', stmt)
         cursor = self._execute(stmt)
         if 'x_contained_by_ref' in columns:
-            #self._execute(f'CREATE INDEX {self.db_schema_prefix}"{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
-            pass
-        self.connection.commit()
+            self._execute((f'ALTER TABLE {self.db_schema_prefix}"{tablename}" ADD INDEX "{tablename}_obs"'
+                            f' (x_contained_by_ref) TYPE set(0) GRANULARITY 4 '),
+                            cursor)
         cursor.close()
 
     def _add_column(self, tablename, prop_name, prop_type):
@@ -344,7 +331,7 @@ class ClickhouseStorage(SqlStorage):
             #traceback.print_stack()
             return self.connection.cursor()
         self._new_name(cursor, viewname, sco_type)
-        return cursor;
+        return cursor
 
 
     def _new_name(self, cursor, name, sco_type):
@@ -408,7 +395,7 @@ class ClickhouseStorage(SqlStorage):
 
     def delete(self):
         """Delete ALL data in this store"""
-        self._execute(f'DROP DATABASE "{self.session_id}" CASCADE;', cursor)
+        cursor = self._execute(f'DROP DATABASE "{self.session_id}" CASCADE;')
         cursor.close()
 
     def _extract(self, viewname, sco_type, tablename, pattern, query_id=None):
@@ -455,8 +442,9 @@ class ClickhouseStorage(SqlStorage):
 
         try:
             self._create_view(viewname, select, sco_type, deps=[tablename], cursor=cursor)
-        except IncompatibleType:
-            raise IncompatibleType(f'{viewname} has type "{old_type}"; cannot assign type "{sco_type}"')
+        except IncompatibleType as incompType:
+            raise IncompatibleType((f'{viewname} has type "{old_type}";'
+                                    f' cannot assign type "{sco_type}"')) from incompType
 
     def reassign(self, viewname, objects):
         """Replace `objects` (or insert them if they're not there)"""
@@ -484,7 +472,8 @@ class ClickhouseStorage(SqlStorage):
 
         # Insert into membership table
         for obj in objects:
-            stmt = f'INSERT INTO {self.db_schema_prefix}__membership ("sco_id", "var") VALUES ({self.placeholder}, {self.placeholder});'
+            stmt = (f'INSERT INTO {self.db_schema_prefix}__membership ("sco_id", "var")'
+                    f' VALUES ({self.placeholder}, {self.placeholder});')
             cursor.execute(stmt, (obj['id'], viewname))
 
         # Create view
@@ -496,13 +485,10 @@ class ClickhouseStorage(SqlStorage):
     def get_view_data(self, viewnames=None):
         """Retrieve information about one or more viewnames"""
         if viewnames:
-            placeholders = ', '.join([self.placeholder] * len(viewnames))
             views = ', '.join(f'"{w}"' for w in viewnames)
             stmt = f'SELECT * FROM {self.db_schema_prefix}"__symtable" WHERE name IN ({views})'
-            values = tuple(viewnames)
         else:
             stmt = f'SELECT * FROM {self.db_schema_prefix}"__symtable";'
-            values = None
 
         cursor = self._query(stmt)
         res = cursor.fetchall()
@@ -534,12 +520,11 @@ class ClickhouseStorage(SqlStorage):
             cols = cols.union(obj.keys())
         colnames = list(cols)
         if tablename == 'identity':
-            action = f'NOTHING'
+            action = 'NOTHING'
         else:
             excluded = self._get_excluded(colnames, tablename)
             action = f'UPDATE SET {excluded}'
         valnames = ', '.join([f'"{x}"' for x in colnames])
-        placeholders = ', '.join([f"({', '.join([self.placeholder] * len(colnames))})"] * len(objs))
 
         # Workaround because of problem executing prepared statements with placeholders
         values = []
@@ -562,9 +547,9 @@ class ClickhouseStorage(SqlStorage):
                 if len(entry)>0:
                     entry="%s,"%entry
                 value = obj.get(c, None)
-                if isinstance(value, list) or isinstance(value, str):
+                if isinstance(value, (list, str)):
                     entry="%s '%s'"%(entry,str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
-                elif value == None:
+                elif value is None:
                     entry="%s NULL"%(entry)
                 else:
                     entry="%s %s"%(entry,value)
