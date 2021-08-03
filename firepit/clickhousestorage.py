@@ -394,7 +394,7 @@ class ClickhouseStorage(SqlStorage):
 
     def delete(self):
         """Delete ALL data in this store"""
-        cursor = self._execute(f'DROP DATABASE "{self.session_id}" CASCADE;')
+        cursor = self._execute(f'DROP DATABASE "{self.session_id}"')
         cursor.close()
 
     def _extract(self, viewname, sco_type, tablename, pattern, query_id=None):
