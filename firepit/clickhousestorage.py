@@ -13,8 +13,6 @@ from firepit.splitter import SplitWriter
 from firepit.sqlstorage import SqlStorage
 from firepit.validate import validate_name
 from firepit.validate import validate_path
-from firepit.query import Table
-from firepit.query import Join
 from firepit.stix20 import stix2sql
 from firepit.props import auto_agg
 
@@ -74,9 +72,13 @@ class CursorWrapper():
             index=0
             while query_text.find("?") and not query_values is None and index<len(query_values):
                 value =  query_values[index]
+                if value is None:
+                    query_text = query_text.replace("?","Null",1)
+                    continue
                 if isinstance(value, str):
                     value=f"'{value}'"
                 query_text = query_text.replace("?",value,1)
+
                 index = index+1
             self.cursor.execute(query_text)
 
@@ -212,13 +214,6 @@ class ClickhouseStorage(SqlStorage):
 
 
     def run_query(self, query):
-        for i in range(0,len(query.stages)):
-            if isinstance(query.stages[i], Table):
-                query.stages[i].name = f'{self.session_id}"."{query.stages[i].name}'
-            elif isinstance(query.stages[i], Join):
-                query.stages[i].name = f'{self.session_id}"."{query.stages[i].name}'
-                query.stages[i].prev_name = f'{self.session_id}"."{query.stages[i].prev_name}'
-
         query_text, query_values = query.render(self.placeholder)
         try:
             return self._query(query_text, query_values)
@@ -291,7 +286,7 @@ class ClickhouseStorage(SqlStorage):
     def _create_table(self, tablename, columns):
         # Same as base class, but disable WAL
         stmt = f'CREATE TABLE {self.db_schema_prefix}"{tablename}" ('
-        stmt += ','.join([f'"{colname}" {coltype}' for colname,
+        stmt += ','.join([f'"{colname}" Nullable({coltype})' for colname,
                 coltype in columns.items()])
         stmt += ') ENGINE=MergeTree() primary key tuple();'
         logger.debug('_create_table: "%s"', stmt)
