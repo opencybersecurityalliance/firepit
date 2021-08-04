@@ -120,16 +120,12 @@ class Projection:
 class Table:
     """SQL Table selection"""
 
-    def __init__(self, name, prefix='', alias=None):
+    def __init__(self, name, prefix=''):
         self.name = name
         self.prefix = prefix
-        self.alias =alias
 
     def render(self, placeholder):
-        if self.alias:
-            return f'{self.prefix}"{self.name }" AS "{self.alias}"'
-        else:
-            return f'{self.prefix}"{self.name}"'
+        return f'{self.prefix}"{self.name}"'
 
 
 class Group:
@@ -234,12 +230,10 @@ class CountUnique:
 class Join:
     """Join 2 tables"""
 
-    def __init__(self, name, left_col, op, right_col, how='INNER', name_alias=None,prefix=''):
+    def __init__(self, name, left_col, op, right_col, how='INNER',prefix=''):
         self.prev_name = None
-        self.prev_name_alias = None
         self.prefix=prefix
         self.name = name
-        self.alias = name_alias
         self.left_col = left_col
         self.op = op
         self.right_col = right_col
@@ -248,14 +242,9 @@ class Join:
 
     def render(self, placeholder):
         # Assume there's a FROM before this?
-        if self.alias and self.prev_name_alias:
-            return (f'{self.how.upper()} JOIN {self.prefix}"{self.name}" as "{self.alias}"'
-                    f' ON "{self.prev_name_alias}"."{self.left_col}"'
-                    f' {self.op} "{self.alias}"."{self.right_col}"')
-        else:
-            return (f'{self.how.upper()} JOIN {self.prefix}"{self.name}"'
-                f' ON "{self.prev_name}"."{self.left_col}"'
-                f' {self.op} "{self.name}"."{self.right_col}"')
+        return (f'{self.how.upper()} JOIN {self.prefix}"{self.name}"'
+            f' ON {self.prefix}"{self.prev_name}"."{self.left_col}"'
+            f' {self.op} {self.prefix}"{self.name}"."{self.right_col}"')
 
 class Query:
     def __init__(self):
@@ -276,7 +265,6 @@ class Query:
             last = self.stages[-1] if self.stages else None
             if isinstance(last, (Table, Join)):
                 stage.prev_name = last.name
-                stage.prev_name_alias = last.alias
             else:
                 raise InvalidQuery('Join must follow Table or Join')
         elif isinstance(stage, Count):
