@@ -18,8 +18,11 @@ def get_storage(url, session_id=None):
     if url.scheme == 'postgresql':
         module = import_module('firepit.pgstorage')
         return module.get_storage(url, session_id)
+    if url.scheme == 'clickhousejdbc':
+        module = import_module('firepit.clickhousestorage_jdbc')
+        return module.get_storage(url, session_id)
     if url.scheme == 'clickhouse':
-        module = import_module('firepit.clickhousestorage')
+        module = import_module('firepit.clickhousestorage_native')
         return module.get_storage(url, session_id)
     if url.scheme in ['sqlite3', '']:
         module = import_module('firepit.sqlitestorage')

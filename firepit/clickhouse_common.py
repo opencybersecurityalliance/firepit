@@ -2,29 +2,15 @@ import logging
 import os
 import re
 import orjson
-import jaydebeapi
 
 from firepit.exceptions import IncompatibleType
-from firepit.exceptions import InvalidAttr
-from firepit.exceptions import InvalidObject
 from firepit.exceptions import StixPatternError
 from firepit.splitter import SqlWriter
-from firepit.splitter import SplitWriter
 from firepit.sqlstorage import SqlStorage
 from firepit.validate import validate_name
-from firepit.validate import validate_path
 from firepit.stix20 import stix2sql
-from firepit.props import auto_agg
-
-
 
 logger = logging.getLogger(__name__)
-
-
-def get_storage(url, session_id):
-    dbname = url.path.lstrip('/')
-    return ClickhouseStorage(dbname, url.geturl(), session_id)
-
 
 def _infer_type(key, value):
     if key == 'id':
@@ -65,6 +51,7 @@ class CursorWrapper():
         self.cursor = cursor
 
     def execute(self,query_text,query_values=None):
+        query_text = query_text.rstrip("; ")
         if not (query_text.lower()=='begin'
                 or query_text.lower()=='begin;'
                 or query_text.lower()=='commit'
@@ -80,13 +67,20 @@ class CursorWrapper():
                 query_text = query_text.replace("?",value,1)
 
                 index = index+1
-            self.cursor.execute(query_text)
+            try:
+                self.cursor.execute(query_text)
+            except:
+                logger.error("Error excecuting query %s",query_text)
 
     def fetchall(self):
         convertedResult = []
         if self.cursor is None:
             return convertedResult
-        result =  self.cursor.fetchall()
+        result = None
+        try:
+            result =  self.cursor.fetchall()
+        except:
+            logger.error("Error excecuting fetchall")
         if result is None:
             return convertedResult
         for row in result:
@@ -105,7 +99,11 @@ class CursorWrapper():
         convertedResult = {}
         if self.cursor is None:
             return convertedResult
-        result =  self.cursor.fetchone()
+        result = None
+        try:
+            result =  self.cursor.fetchone()
+        except:
+            logger.error("Error excecuting fetchone")
         if result is None:
             return convertedResult
         for index,value in enumerate(self.cursor.description):
@@ -119,25 +117,21 @@ class CursorWrapper():
         self.cursor.close()
 
 
-"""
-clickhouse storage implementation for Firepit
-url pattern:
-    clickhouse://<clickhouse_url>:<clickhouse_port>/?user=<clickhouse_user>&password=<clickhouse_password>
-"""
-class ClickhouseStorage(SqlStorage):
-    def __init__(self, dbname, url, session_id=None):
+
+class ClickhouseStorageCommon(SqlStorage):
+    def __init__(self, dbname, session_id=None):
         super().__init__()
-        logger.debug("Initializing Clickhouse Storage")
+        self.text_min = 'MIN'
+        self.text_max = 'MAX'
+        # Function that returns first non-null arg_type
+        self.ifnull = 'IFNULL'
         self.placeholder = '?'
         self.dbname = dbname
         if not session_id:
             session_id = 'firepit'
         self.session_id = session_id
-        self.connection = ConnectionWrapper(jaydebeapi.connect(
-             "ru.yandex.clickhouse.ClickHouseDriver",
-             f"jdbc:{url}",
-             {'session_id':f'{session_id}'}
-             ))
+
+    def createDefaultTables(self):
         cursor=self.connection.cursor()
         self.db_schema_prefix = f'"{self.session_id}".'
         self._execute(f'CREATE DATABASE IF NOT EXISTS "{self.session_id}";', cursor=cursor)
@@ -152,9 +146,7 @@ class ClickhouseStorage(SqlStorage):
         stmt = (f'CREATE TABLE IF NOT EXISTS {self.db_schema_prefix}"__queries" '
                 '(sco_id String, query_id String) ENGINE=MergeTree() primary key tuple();')
         self._execute(stmt, cursor)
-
         cursor.close()
-        logger.debug("Connection to Clickhouse DB %s successful", dbname)
 
     def _get_writer(self, prefix):
         """Get a DB inserter object"""
@@ -172,14 +164,6 @@ class ClickhouseStorage(SqlStorage):
         except Exception:
             pass
 
-    def table_type(self, viewname):
-        """Get the SCO type for table/view `viewname`"""
-        validate_name(viewname)
-        stmt = f'SELECT "type" FROM {self.db_schema_prefix}"__symtable" WHERE name = \'{viewname}\''
-        cursor = self._query(stmt)
-        res = cursor.fetchone()
-        return res["type"] if res else None
-
     def rename_view(self, oldname, newname):
         """Rename view `oldname` to `newname`"""
         validate_name(oldname)
@@ -194,24 +178,6 @@ class ClickhouseStorage(SqlStorage):
             cursor.close()
         except Exception:
             pass
-
-    def lookup(self, viewname, cols="*", limit=None, offset=None):
-        """Get the value of `viewname`"""
-        validate_name(viewname)
-        if cols != "*":
-            dbcols = self.columns(viewname)
-            cols = cols.replace(" ", "").split(",")
-            for col in cols:
-                if col not in dbcols:
-                    raise InvalidAttr(f"{col}")
-        try:
-            stmt = self._select(f'{viewname}', cols=cols, limit=limit, offset=offset)
-            cursor = self._query(stmt)
-            result =cursor.fetchall()
-            return result
-        except Exception:
-            return []
-
 
     def run_query(self, query):
         query_text, query_values = query.render(self.placeholder)
@@ -233,55 +199,6 @@ class ClickhouseStorage(SqlStorage):
         stmt = ' UNION DISTINCT '.join(selects)
         sco_type = self.table_type(input_views[0])
         self._create_view(viewname, stmt, sco_type, deps=input_views)
-
-
-    def _select(self, tvname, cols="*", sortby=None, groupby=None,
-                ascending=True, limit=None, offset=None, where=None):
-        """Generate a SELECT query on table or view `tvname`"""
-        if cols != "*":
-            cols = ", ".join([f'"{col}"' if not col.startswith("'") else col for col in cols])
-
-        stmt = f'SELECT {cols} FROM {self.db_schema_prefix}"{tvname}"'
-        if where:
-            stmt += f' WHERE {where}'
-        if groupby:
-            validate_path(groupby)
-            # For grouping, we need to aggregate data in the columns.
-            aggs = [
-                'MIN("type") as "type"',
-                f'"{groupby}"',
-            ]
-            sco_type = self.table_type(tvname)
-            for col in self.schema(tvname):
-                # Don't aggregate the column we used for grouping
-                if col['name'] == groupby:
-                    continue
-                agg = auto_agg(sco_type, col['name'], col['type'])
-                if agg:
-                    aggs.append(agg)
-            group_cols = ', '.join(aggs)
-            stmt = f'SELECT {group_cols} from {self.db_schema_prefix}"{tvname}"'
-            stmt += f' GROUP BY "{groupby}"'
-        if sortby:
-            #
-            validate_path(sortby)
-            stmt += f' ORDER BY "{sortby}" ' + ('ASC' if ascending else 'DESC')
-        if limit:
-            if not isinstance(limit, int):
-                raise TypeError('LIMIT must be an integer')
-            stmt += f' LIMIT {limit}'
-        if offset:
-            if not isinstance(offset, int):
-                raise TypeError('LIMIT must be an integer')
-            stmt += f' OFFSET {offset}'
-        return stmt
-
-    def _query(self, query, values=None):
-        """Private wrapper for logging SQL query"""
-        logger.debug('Executing query: %s', query)
-        cursor = self.connection.cursor()
-        cursor.execute(query,values)
-        return cursor
 
     def _create_table(self, tablename, columns):
         # Same as base class, but disable WAL
@@ -327,16 +244,6 @@ class ClickhouseStorage(SqlStorage):
             return self.connection.cursor()
         self._new_name(cursor, viewname, sco_type)
         return cursor
-
-
-    def _new_name(self, cursor, name, sco_type):
-        stmt = (f'INSERT INTO {self.db_schema_prefix}"__symtable" (name, type)'
-                f' VALUES ({self.placeholder}, {self.placeholder})')
-        cursor.execute(stmt,(name,sco_type))
-
-    def _drop_name(self, cursor, name):
-        stmt = f'ALTER TABLE {self.db_schema_prefix}"__symtable" DELETE WHERE name = {self.placeholder}'
-        cursor.execute(stmt,(name))
 
     def _get_view_def(self, viewname):
         cursor = self._query("SELECT create_table_query"
@@ -439,74 +346,6 @@ class ClickhouseStorage(SqlStorage):
         except IncompatibleType as incompType:
             raise IncompatibleType((f'{viewname} has type "{old_type}";'
                                     f' cannot assign type "{sco_type}"')) from incompType
-
-    def reassign(self, viewname, objects):
-        """Replace `objects` (or insert them if they're not there)"""
-        writer = self._get_writer(None)
-        splitter = SplitWriter(writer, batchsize=1000, replace=True)
-        sco_type = None
-        for obj in objects:
-            if 'type' not in obj:
-                raise InvalidObject('missing `type`')
-            elif not isinstance(obj, dict):
-                raise InvalidObject('Unknown data format')
-            if not sco_type:
-                sco_type = obj['type']
-            if 'id' not in obj:
-                raise InvalidObject('missing `id`')
-            splitter.write(obj)
-        splitter.close()
-
-        # If we're reassigning an existing viewname, we need to drop old membership
-        namestr = f"'{viewname}'"
-        cursor = self.connection.cursor()
-        if viewname in self.views():
-            stmt = f'DELETE FROM {self.db_schema_prefix}__membership WHERE var = {namestr};'
-            cursor = self._execute(stmt, cursor)
-
-        # Insert into membership table
-        for obj in objects:
-            stmt = (f'INSERT INTO {self.db_schema_prefix}__membership ("sco_id", "var")'
-                    f' VALUES ({self.placeholder}, {self.placeholder});')
-            cursor.execute(stmt, (obj['id'], viewname))
-
-        # Create view
-        select = (f'SELECT * FROM {self.db_schema_prefix}"{sco_type}" WHERE "id" IN'
-                  f' (SELECT "sco_id" FROM {self.db_schema_prefix}__membership'
-                  f"  WHERE var = '{viewname}');")
-        cursor = self._create_view(viewname, select, sco_type, cursor=cursor)
-
-    def get_view_data(self, viewnames=None):
-        """Retrieve information about one or more viewnames"""
-        if viewnames:
-            views = ', '.join(f'"{w}"' for w in viewnames)
-            stmt = f'SELECT * FROM {self.db_schema_prefix}"__symtable" WHERE name IN ({views})'
-        else:
-            stmt = f'SELECT * FROM {self.db_schema_prefix}"__symtable";'
-
-        cursor = self._query(stmt)
-        res = cursor.fetchall()
-        cursor.close()
-        return res
-
-    def count(self, viewname):
-        """Get the count of objects (rows) in `viewname`"""
-        validate_name(viewname)
-        stmt = f'SELECT COUNT(*) FROM {self.db_schema_prefix}"{viewname}"'
-        try:
-            cursor = self._query(stmt)
-            res = cursor.fetchone()
-            return res["count()"] if res else 0
-        except Exception:
-            return 0
-
-    def remove_view(self, viewname):
-        """Remove view `viewname`"""
-        validate_name(viewname)
-        cursor = self.connection.cursor()
-        self._execute(f'DROP VIEW IF EXISTS {self.db_schema_prefix}"{viewname}"', cursor)
-        self._drop_name(cursor, viewname)
-        cursor.close()
 
     def upsert_many(self, cursor, tablename, objs, query_id):
         cols = set()
