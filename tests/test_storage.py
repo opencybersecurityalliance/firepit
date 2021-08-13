@@ -281,8 +281,6 @@ def test_reassign(fake_bundle_file, fake_csv_file, tmpdir):
 
     # Now reload into the same var
     store.reassign('urls', urls)
-    rows = store.lookup('__membership')
-    print(ujson.dumps(rows, indent=4))
     rows = store.lookup('urls')
     print(ujson.dumps(rows, indent=4))
     assert len(rows) == len(urls)
@@ -493,9 +491,3 @@ def test_clobber_viewname(fake_bundle_file_2, tmpdir):
     # conns2 should be no more:
     with pytest.raises(UnknownViewname):
         store.lookup('conns2')
-
-    # Poke around more
-    cursor = store.connection.cursor()
-    cursor.execute("SELECT COUNT(*) c FROM __membership WHERE var = 'conns2'")
-    res = cursor.fetchall()
-    assert res[0]['c'] == 0

@@ -86,9 +86,6 @@ class PgStorage(SqlStorage):
             stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
                     '(name TEXT, type TEXT, appdata TEXT);')
             self._execute(stmt, cursor)
-            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__membership" '
-                    '(sco_id TEXT, var TEXT);')
-            self._execute(stmt, cursor)
             stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__queries" '
                     '(sco_id TEXT, query_id TEXT);')
             self._execute(stmt, cursor)

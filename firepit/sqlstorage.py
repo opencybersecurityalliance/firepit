@@ -73,9 +73,6 @@ class SqlStorage:
         stmt = ('CREATE TABLE IF NOT EXISTS "__symtable" '
                 '(name TEXT, type TEXT, appdata TEXT);')
         self._execute(stmt, cursor)
-        stmt = ('CREATE TABLE IF NOT EXISTS "__membership" '
-                '(sco_id TEXT, var TEXT);')
-        self._execute(stmt, cursor)
         stmt = ('CREATE TABLE IF NOT EXISTS "__queries" '
                 '(sco_id TEXT, query_id TEXT);')
         self._execute(stmt, cursor)
@@ -202,28 +199,10 @@ class SqlStorage:
         # Need to convert viewname from identifier to string, so use single quotes
         namestr = f"'{viewname}'"
         cursor = self._execute('BEGIN;')
-
-        # If we're reassigning an existing viewname, we need to drop old membership
-        old_type = None
-        if viewname in self.views():
-            old_type = self.table_type(viewname)
-            stmt = f'DELETE FROM __membership WHERE var = {namestr};'
-            cursor = self._execute(stmt, cursor)
-
-        if tablename in self.tables():
-            select = (f'SELECT "id", {namestr} FROM'
-                      f' (SELECT s.id, q.query_id FROM "{sco_type}" AS s'
-                      f'  INNER JOIN __queries AS q ON s.id = q.sco_id'
-                      f'  WHERE {where}) AS foo;')
-
-            # Insert into membership table
-            stmt = 'INSERT INTO __membership ("sco_id", "var") ' + select
-            cursor = self._execute(stmt, cursor)
-
-        # Create query for the view
         select = (f'SELECT * FROM "{sco_type}" WHERE "id" IN'
-                  f' (SELECT "sco_id" FROM __membership'
-                  f"  WHERE var = '{viewname}');")
+                  f' (SELECT "{sco_type}".id FROM "{sco_type}"'
+                  f'  INNER JOIN __queries ON "{sco_type}".id = __queries.sco_id'
+                  f'  WHERE {where});')
 
         try:
             cursor = self._create_view(viewname, select, sco_type, deps=[tablename], cursor=cursor)
@@ -354,24 +333,11 @@ class SqlStorage:
             splitter.write(obj)
         splitter.close()
 
-        # If we're reassigning an existing viewname, we need to drop old membership
-        namestr = f"'{viewname}'"
-        cursor = self.connection.cursor()
-        cursor.execute('BEGIN')
-        if viewname in self.views():
-            stmt = f'DELETE FROM __membership WHERE var = {namestr};'
-            cursor = self._execute(stmt, cursor)
-
-        # Insert into membership table
-        for obj in objects:
-            stmt = f'INSERT INTO __membership ("sco_id", "var") VALUES ({self.placeholder}, {self.placeholder});'
-            cursor.execute(stmt, (obj['id'], viewname))
-
-        # Create view
-        select = (f'SELECT * FROM "{sco_type}" WHERE "id" IN'
-                  f' (SELECT "sco_id" FROM __membership'
-                  f"  WHERE var = '{viewname}');")
-        cursor = self._create_view(viewname, select, sco_type, cursor=cursor)
+        # Recreate view
+        viewdef = self._get_view_def(viewname)
+        cursor = self._execute('BEGIN;')
+        self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+        self._execute(f'CREATE VIEW "{viewname}" AS {viewdef}', cursor)
         self.connection.commit()
 
     def update(self, objects, query_id=None):
@@ -593,9 +559,6 @@ class SqlStorage:
         # Need to remove `newname` if it already exists
         self._execute(f'DROP VIEW IF EXISTS "{newname}";', cursor)
         self._drop_name(cursor, newname)
-
-        # Update membership table
-        self._execute(f"UPDATE __membership SET var = '{newname}' WHERE var = '{oldname}';", cursor)
 
         # Now do the rename
         qry = re.sub(f'var = \'{oldname}\'',  # This is an ugly hack
