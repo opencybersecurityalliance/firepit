@@ -59,6 +59,18 @@ class PgStorage(SqlStorage):
 
         self._execute(f'SET search_path TO "{session_id}";')
 
+        stmt = ("SELECT (EXISTS (SELECT *"
+                " FROM INFORMATION_SCHEMA.TABLES"
+                " WHERE TABLE_SCHEMA = %s"
+                " AND  TABLE_NAME = '__queries'))")
+        res = self._query(stmt, (session_id,)).fetchone()
+        done = list(res.values())[0] if res else False
+        if not done:
+            self._setup()
+
+        logger.debug("Connection to PostgreSQL DB %s successful", dbname)
+
+    def _setup(self):
         cursor = self._execute('BEGIN;')
         try:
             self._execute('''CREATE FUNCTION match(pattern TEXT, value TEXT)
@@ -84,8 +96,6 @@ class PgStorage(SqlStorage):
             cursor.close()
         except psycopg2.errors.DuplicateFunction:
             self.connection.rollback()
-
-        logger.debug("Connection to PostgreSQL DB %s successful", dbname)
 
     def _get_writer(self, prefix):
         """Get a DB inserter object"""
