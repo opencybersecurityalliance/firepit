@@ -15,8 +15,14 @@ from .helpers import tmp_storage
 def test_local(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', fake_bundle_file)
+    assert 'url' in store.tables()
+    assert 'url' in store.types()
+    assert not store._is_sql_view('url')
 
     store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    assert 'urls' in store.views()
+    assert 'urls' not in store.types()
+    assert store._is_sql_view('urls')
     urls = store.values('url:value', 'urls')
     print(urls)
     assert len(urls) == 14
@@ -293,6 +299,53 @@ def test_reassign(fake_bundle_file, fake_csv_file, tmpdir):
     # Original var's objects should have been updated
     assert urls[0]['x_enrich'] == 1
 
+
+def test_reassign_after_grouping(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
+    assert 'conns' not in store.tables()
+    assert 'conns' not in store.types()
+    assert 'conns' in store.views()
+    store.assign('grouped_conns', 'conns', op='group', by='src_ref.value')
+    assert 'grouped_conns' in store.views()
+    grouped_conns = store.lookup('grouped_conns')
+
+    # Simulate running some analytics to enrich these
+    for grp in grouped_conns:
+        grp['x_enrich'] = 1
+
+    # Now reload into the same var
+    store.reassign('grouped_conns', grouped_conns)
+    rows = store.lookup('grouped_conns')
+    #print(ujson.dumps(rows, indent=4))
+    assert len(rows) == len(grouped_conns)
+    assert rows[0]['x_enrich'] == 1
+
+    # Now it's a table!!!
+    assert 'grouped_conns' in store.tables()
+    assert 'grouped_conns' in store.views()
+    assert 'grouped_conns' not in store.types()
+
+    # Can we still work with it?
+    store.assign('x_conns', 'grouped_conns', op='sort', by='src_ref.value')
+    rows = store.lookup('x_conns')
+    #print(ujson.dumps(rows, indent=4))
+    assert len(rows) == len(grouped_conns)
+
+    # Can we reassign to that name?
+    store.assign('grouped_conns', 'grouped_conns', op='sort', by='src_ref.value')
+    print('PC: tables:', store.tables())
+    print('PC: types:', store.types())
+    print('PC: views:', store.views())
+    assert 'grouped_conns' not in store.tables()  # Now it's a SQL view again!
+    assert 'grouped_conns' not in store.types()
+    assert 'grouped_conns' in store.views()
+    rows = store.lookup('grouped_conns')
+    print(ujson.dumps(rows, indent=4))
+    assert len(rows) == len(grouped_conns)
+    
 
 def test_appdata(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)

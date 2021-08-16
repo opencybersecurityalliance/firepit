@@ -63,6 +63,9 @@ class SqlStorage:
         # Function that returns first non-null arg_type
         self.ifnull = 'IFNULL'
 
+        # Python-to-SQL type mapper
+        self.infer_type = infer_type
+
     def _get_writer(self, prefix):
         """Get a DB inserter object"""
         # This is DB-specific
@@ -99,14 +102,16 @@ class SqlStorage:
     def _command(self, cmd, cursor=None):
         """Private wrapper for logging SQL commands"""
         logger.debug('Executing command: %s', cmd)
-        cursor = self.connection.cursor()
+        if not cursor:
+            cursor = self.connection.cursor()
         cursor.execute(cmd)
         self.connection.commit()
 
-    def _query(self, query, values=None):
+    def _query(self, query, values=None, cursor=None):
         """Private wrapper for logging SQL query"""
         logger.debug('Executing query: %s', query)
-        cursor = self.connection.cursor()
+        if not cursor:
+            cursor = self.connection.cursor()
         if not values:
             values = ()
         cursor.execute(query, values)
@@ -180,6 +185,10 @@ class SqlStorage:
         # This is DB-specific
         raise NotImplementedError('Storage._get_view_def')
 
+    def _is_sql_view(self, name, cursor=None):
+        ## This is DB-specific
+        raise NotImplementedError('Storage._is_sql_view')
+
     def _extract(self, viewname, sco_type, tablename, pattern, query_id=None):
         """Extract rows from `tablename` to create view `viewname`"""
         validate_name(viewname)
@@ -231,17 +240,19 @@ class SqlStorage:
         excluded = self._get_excluded(colnames, tablename)
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([self.placeholder] * len(obj))
-        stmt = (f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
-                f' ON CONFLICT (id) DO UPDATE SET {excluded};')
+        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
+        if 'id' in colnames:
+            stmt += f' ON CONFLICT (id) DO UPDATE SET {excluded}'
         values = tuple([str(orjson.dumps(value), 'utf-8')
                         if isinstance(value, list) else value for value in obj.values()])
         logger.debug('_upsert: "%s"', stmt)
         cursor.execute(stmt, values)
 
-        # Now add to query table as well
-        stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
-                f' VALUES ({self.placeholder}, {self.placeholder})')
-        cursor.execute(stmt, (obj['id'], query_id))
+        if query_id:
+            # Now add to query table as well
+            stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
+                    f' VALUES ({self.placeholder}, {self.placeholder})')
+            cursor.execute(stmt, (obj['id'], query_id))
 
     def upsert_many(self, cursor, tablename, objs, query_id):
         for obj in objs:
@@ -318,26 +329,42 @@ class SqlStorage:
 
     def reassign(self, viewname, objects):
         """Replace `objects` (or insert them if they're not there)"""
-        writer = self._get_writer(None)
-        splitter = SplitWriter(writer, batchsize=1000, replace=True)
-        sco_type = None
-        for obj in objects:
-            if 'type' not in obj:
-                raise InvalidObject('missing `type`')
-            elif not isinstance(obj, dict):
-                raise InvalidObject('Unknown data format')
-            if not sco_type:
-                sco_type = obj['type']
-            if 'id' not in obj:
-                raise InvalidObject('missing `id`')
-            splitter.write(obj)
-        splitter.close()
+        validate_name(viewname)
+        # TODO: ensure viewname exists?  Do we care?
 
-        # Recreate view
-        viewdef = self._get_view_def(viewname)
+        # Ignore it if objects is empty
+        if not objects:
+            return
+
         cursor = self._execute('BEGIN;')
-        self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
-        self._execute(f'CREATE VIEW "{viewname}" AS {viewdef}', cursor)
+        if 'id' not in objects[0]:
+            # Maybe it's aggregates?  Do "copy-on-write"
+            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            columns = {k: self.infer_type(k, v) for k, v in objects[0].items()}
+            self._create_table(viewname, columns)
+            self.upsert_many(cursor, viewname, objects, None)
+            viewdef = self._select(viewname)
+        else:
+            writer = self._get_writer(None)
+            splitter = SplitWriter(writer, batchsize=1000, replace=True)
+            sco_type = None
+            for obj in objects:
+                if 'type' not in obj:
+                    raise InvalidObject('missing `type`')
+                elif not isinstance(obj, dict):
+                    raise InvalidObject('Unknown data format')
+                if not sco_type:
+                    sco_type = obj['type']
+                if 'id' not in obj:
+                    raise InvalidObject('missing `id`')
+                splitter.write(obj)
+            splitter.close()
+            viewdef = self._get_view_def(viewname)
+            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+
+            # Recreate view
+            self._execute(f'CREATE VIEW "{viewname}" AS {viewdef}', cursor)
+
         self.connection.commit()
 
     def update(self, objects, query_id=None):
@@ -411,7 +438,7 @@ class SqlStorage:
         slct = f'SELECT * FROM ({slct}) AS tmp'
         if where:
             slct += f' WHERE {where}'
-        cursor = self._create_view(viewname, slct, sco_type)
+        cursor = self._create_view(viewname, slct, sco_type, deps=[input_view])
         self.connection.commit()
         cursor.close()
 
@@ -453,10 +480,17 @@ class SqlStorage:
         # This is DB-specific
         raise NotImplementedError('Storage.tables')
 
+    def types(self):
+        """Get all table names that correspond to SCO types"""
+        # This is DB-specific
+        raise NotImplementedError('Storage.types')
+
     def views(self):
         """Get all view names"""
-        # This is DB-specific
-        raise NotImplementedError('Storage.views')
+        stmt = 'SELECT name FROM __symtable'
+        cursor = self._query(stmt)
+        result = cursor.fetchall()
+        return [row['name'] for row in result]
 
     def table_type(self, viewname):
         """Get the SCO type for table/view `viewname`"""
