@@ -1,10 +1,8 @@
 import ipaddress
 import logging
 import os
-import random
 import re
 import sqlite3
-import string
 
 from firepit.exceptions import DuplicateTable
 from firepit.exceptions import InvalidAttr
@@ -131,7 +129,7 @@ class SQLiteStorage(SqlStorage):
             self.connection.rollback()
             logger.debug('_create_table: %s', e)  #, exc_info=e)
             if e.args[0].startswith(f'table "{tablename}" already exists'):
-                raise DuplicateTable(tablename)
+                raise DuplicateTable(tablename) from e
         if 'x_contained_by_ref' in columns:
             self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
         self.connection.commit()
@@ -147,7 +145,7 @@ class SQLiteStorage(SqlStorage):
         except sqlite3.OperationalError as e:
             self.connection.rollback()
             logger.debug('%s', e)  #, exc_info=e)
-            if e.args[0].startswith(f'duplicate column name: '):
+            if e.args[0].startswith('duplicate column name: '):
                 pass
             else:
                 raise Exception('Internal error: ' + e.args[0]) from e

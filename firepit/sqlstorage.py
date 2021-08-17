@@ -213,10 +213,7 @@ class SqlStorage:
                   f'  INNER JOIN __queries ON "{sco_type}".id = __queries.sco_id'
                   f'  WHERE {where});')
 
-        try:
-            cursor = self._create_view(viewname, select, sco_type, deps=[tablename], cursor=cursor)
-        except IncompatibleType:
-            raise IncompatibleType(f'{viewname} has type "{old_type}"; cannot assign type "{sco_type}"')
+        cursor = self._create_view(viewname, select, sco_type, deps=[tablename], cursor=cursor)
         self.connection.commit()
         cursor.close()
 
