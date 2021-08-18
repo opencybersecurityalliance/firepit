@@ -1,10 +1,8 @@
 import ipaddress
 import logging
 import os
-import random
 import re
 import sqlite3
-import string
 
 from firepit.exceptions import DuplicateTable
 from firepit.exceptions import InvalidAttr
@@ -88,8 +86,8 @@ class SQLiteStorage(SqlStorage):
     def _execute(self, statement, cursor=None):
         return self._do_execute(statement, cursor=cursor)
 
-    def _query(self, query, values=None):
-        cursor = self._do_execute(query, values=values)
+    def _query(self, query, values=None, cursor=None):
+        cursor = self._do_execute(query, values=values, cursor=cursor)
         self.connection.commit()
         return cursor
 
@@ -98,19 +96,26 @@ class SQLiteStorage(SqlStorage):
         validate_name(viewname)
         if not cursor:
             cursor = self._execute('BEGIN;')
+        is_new = True
         if not deps:
             deps = []
         elif viewname in deps:
-            # Rename old view to random var
-            tmp = ''.join(random.choice(string.ascii_lowercase)
-                          for x in range(8))
-            self._execute(f'DROP VIEW IF EXISTS "{tmp}"', cursor)
+            is_new = False
+            # Get the query that makes up the current view
             slct = self._get_view_def(viewname)
-            self._create_view(tmp, slct, sco_type, cursor=cursor)
-            select = re.sub(f'"{viewname}"', tmp, select)
-        self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            if self._is_sql_view(viewname, cursor):
+                self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            else:
+                self._execute(f'ALTER TABLE "{viewname}" RENAME TO "_{viewname}"', cursor)
+                slct = slct.replace(viewname, f'_{viewname}')
+            # Swap out the viewname for its definition
+            select = re.sub(f'"{viewname}"', f'({slct}) AS tmp', select)
+        if self._is_sql_view(viewname, cursor):
+            is_new = False
+            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
         self._execute(f'CREATE VIEW "{viewname}" AS {select}', cursor)
-        self._new_name(cursor, viewname, sco_type)
+        if is_new:
+            self._new_name(cursor, viewname, sco_type)
         return cursor
 
     def _create_table(self, tablename, columns):
@@ -124,7 +129,7 @@ class SQLiteStorage(SqlStorage):
             self.connection.rollback()
             logger.debug('_create_table: %s', e)  #, exc_info=e)
             if e.args[0].startswith(f'table "{tablename}" already exists'):
-                raise DuplicateTable(tablename)
+                raise DuplicateTable(tablename) from e
         if 'x_contained_by_ref' in columns:
             self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
         self.connection.commit()
@@ -140,7 +145,7 @@ class SQLiteStorage(SqlStorage):
         except sqlite3.OperationalError as e:
             self.connection.rollback()
             logger.debug('%s', e)  #, exc_info=e)
-            if e.args[0].startswith(f'duplicate column name: '):
+            if e.args[0].startswith('duplicate column name: '):
                 pass
             else:
                 raise Exception('Internal error: ' + e.args[0]) from e
@@ -149,8 +154,18 @@ class SQLiteStorage(SqlStorage):
         view = self._query(("SELECT sql from sqlite_master"
                             " WHERE type='view' and name=?"),
                            values=(viewname,)).fetchone()
-        slct = view['sql']
-        return slct.replace(f'CREATE VIEW "{viewname}" AS ', '')
+        if view:
+            slct = view['sql']
+            return slct.replace(f'CREATE VIEW "{viewname}" AS ', '')
+
+        # Must be a table
+        return f'SELECT * FROM "{viewname}"'
+
+    def _is_sql_view(self, name, cursor=None):
+        view = self._query(("SELECT sql from sqlite_master"
+                            " WHERE type='view' and name=?"),
+                           values=(name,)).fetchone()
+        return view is not None
 
     def tables(self):
         cursor = self.connection.execute(
@@ -160,11 +175,14 @@ class SQLiteStorage(SqlStorage):
                 if not i['name'].startswith('__') and
                 not i['name'].startswith('sqlite')]
 
-    def views(self):
-        cursor = self.connection.execute(
-            "SELECT name FROM sqlite_master WHERE type='view';")
+    def types(self):
+        stmt = ("SELECT name FROM sqlite_master WHERE type='table'"
+                " EXCEPT SELECT name FROM __symtable")
+        cursor = self.connection.execute(stmt)
         rows = cursor.fetchall()
-        return [i['name'] for i in rows]
+        return [i['name'] for i in rows
+                if not i['name'].startswith('__') and
+                not i['name'].startswith('sqlite')]
 
     def columns(self, viewname):
         validate_name(viewname)

@@ -63,6 +63,9 @@ class SqlStorage:
         # Function that returns first non-null arg_type
         self.ifnull = 'IFNULL'
 
+        # Python-to-SQL type mapper
+        self.infer_type = infer_type
+
     def _get_writer(self, prefix):
         """Get a DB inserter object"""
         # This is DB-specific
@@ -72,9 +75,6 @@ class SqlStorage:
         """Do some initial DB setup"""
         stmt = ('CREATE TABLE IF NOT EXISTS "__symtable" '
                 '(name TEXT, type TEXT, appdata TEXT);')
-        self._execute(stmt, cursor)
-        stmt = ('CREATE TABLE IF NOT EXISTS "__membership" '
-                '(sco_id TEXT, var TEXT);')
         self._execute(stmt, cursor)
         stmt = ('CREATE TABLE IF NOT EXISTS "__queries" '
                 '(sco_id TEXT, query_id TEXT);')
@@ -102,14 +102,16 @@ class SqlStorage:
     def _command(self, cmd, cursor=None):
         """Private wrapper for logging SQL commands"""
         logger.debug('Executing command: %s', cmd)
-        cursor = self.connection.cursor()
+        if not cursor:
+            cursor = self.connection.cursor()
         cursor.execute(cmd)
         self.connection.commit()
 
-    def _query(self, query, values=None):
+    def _query(self, query, values=None, cursor=None):
         """Private wrapper for logging SQL query"""
         logger.debug('Executing query: %s', query)
-        cursor = self.connection.cursor()
+        if not cursor:
+            cursor = self.connection.cursor()
         if not values:
             values = ()
         cursor.execute(query, values)
@@ -183,6 +185,10 @@ class SqlStorage:
         # This is DB-specific
         raise NotImplementedError('Storage._get_view_def')
 
+    def _is_sql_view(self, name, cursor=None):
+        ## This is DB-specific
+        raise NotImplementedError('Storage._is_sql_view')
+
     def _extract(self, viewname, sco_type, tablename, pattern, query_id=None):
         """Extract rows from `tablename` to create view `viewname`"""
         validate_name(viewname)
@@ -202,33 +208,12 @@ class SqlStorage:
         # Need to convert viewname from identifier to string, so use single quotes
         namestr = f"'{viewname}'"
         cursor = self._execute('BEGIN;')
-
-        # If we're reassigning an existing viewname, we need to drop old membership
-        old_type = None
-        if viewname in self.views():
-            old_type = self.table_type(viewname)
-            stmt = f'DELETE FROM __membership WHERE var = {namestr};'
-            cursor = self._execute(stmt, cursor)
-
-        if tablename in self.tables():
-            select = (f'SELECT "id", {namestr} FROM'
-                      f' (SELECT s.id, q.query_id FROM "{sco_type}" AS s'
-                      f'  INNER JOIN __queries AS q ON s.id = q.sco_id'
-                      f'  WHERE {where}) AS foo;')
-
-            # Insert into membership table
-            stmt = 'INSERT INTO __membership ("sco_id", "var") ' + select
-            cursor = self._execute(stmt, cursor)
-
-        # Create query for the view
         select = (f'SELECT * FROM "{sco_type}" WHERE "id" IN'
-                  f' (SELECT "sco_id" FROM __membership'
-                  f"  WHERE var = '{viewname}');")
+                  f' (SELECT "{sco_type}".id FROM "{sco_type}"'
+                  f'  INNER JOIN __queries ON "{sco_type}".id = __queries.sco_id'
+                  f'  WHERE {where});')
 
-        try:
-            cursor = self._create_view(viewname, select, sco_type, deps=[tablename], cursor=cursor)
-        except IncompatibleType:
-            raise IncompatibleType(f'{viewname} has type "{old_type}"; cannot assign type "{sco_type}"')
+        cursor = self._create_view(viewname, select, sco_type, deps=[tablename], cursor=cursor)
         self.connection.commit()
         cursor.close()
 
@@ -252,17 +237,19 @@ class SqlStorage:
         excluded = self._get_excluded(colnames, tablename)
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([self.placeholder] * len(obj))
-        stmt = (f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
-                f' ON CONFLICT (id) DO UPDATE SET {excluded};')
+        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
+        if 'id' in colnames:
+            stmt += f' ON CONFLICT (id) DO UPDATE SET {excluded}'
         values = tuple([str(orjson.dumps(value), 'utf-8')
                         if isinstance(value, list) else value for value in obj.values()])
         logger.debug('_upsert: "%s"', stmt)
         cursor.execute(stmt, values)
 
-        # Now add to query table as well
-        stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
-                f' VALUES ({self.placeholder}, {self.placeholder})')
-        cursor.execute(stmt, (obj['id'], query_id))
+        if query_id:
+            # Now add to query table as well
+            stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
+                    f' VALUES ({self.placeholder}, {self.placeholder})')
+            cursor.execute(stmt, (obj['id'], query_id))
 
     def upsert_many(self, cursor, tablename, objs, query_id):
         for obj in objs:
@@ -339,39 +326,42 @@ class SqlStorage:
 
     def reassign(self, viewname, objects):
         """Replace `objects` (or insert them if they're not there)"""
-        writer = self._get_writer(None)
-        splitter = SplitWriter(writer, batchsize=1000, replace=True)
-        sco_type = None
-        for obj in objects:
-            if 'type' not in obj:
-                raise InvalidObject('missing `type`')
-            elif not isinstance(obj, dict):
-                raise InvalidObject('Unknown data format')
-            if not sco_type:
-                sco_type = obj['type']
-            if 'id' not in obj:
-                raise InvalidObject('missing `id`')
-            splitter.write(obj)
-        splitter.close()
+        validate_name(viewname)
+        # TODO: ensure viewname exists?  Do we care?
 
-        # If we're reassigning an existing viewname, we need to drop old membership
-        namestr = f"'{viewname}'"
-        cursor = self.connection.cursor()
-        cursor.execute('BEGIN')
-        if viewname in self.views():
-            stmt = f'DELETE FROM __membership WHERE var = {namestr};'
-            cursor = self._execute(stmt, cursor)
+        # Ignore it if objects is empty
+        if not objects:
+            return
 
-        # Insert into membership table
-        for obj in objects:
-            stmt = f'INSERT INTO __membership ("sco_id", "var") VALUES ({self.placeholder}, {self.placeholder});'
-            cursor.execute(stmt, (obj['id'], viewname))
+        cursor = self._execute('BEGIN;')
+        if 'id' not in objects[0]:
+            # Maybe it's aggregates?  Do "copy-on-write"
+            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            columns = {k: self.infer_type(k, v) for k, v in objects[0].items()}
+            self._create_table(viewname, columns)
+            self.upsert_many(cursor, viewname, objects, None)
+            viewdef = self._select(viewname)
+        else:
+            writer = self._get_writer(None)
+            splitter = SplitWriter(writer, batchsize=1000, replace=True)
+            sco_type = None
+            for obj in objects:
+                if 'type' not in obj:
+                    raise InvalidObject('missing `type`')
+                elif not isinstance(obj, dict):
+                    raise InvalidObject('Unknown data format')
+                if not sco_type:
+                    sco_type = obj['type']
+                if 'id' not in obj:
+                    raise InvalidObject('missing `id`')
+                splitter.write(obj)
+            splitter.close()
+            viewdef = self._get_view_def(viewname)
+            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
 
-        # Create view
-        select = (f'SELECT * FROM "{sco_type}" WHERE "id" IN'
-                  f' (SELECT "sco_id" FROM __membership'
-                  f"  WHERE var = '{viewname}');")
-        cursor = self._create_view(viewname, select, sco_type, cursor=cursor)
+            # Recreate view
+            self._execute(f'CREATE VIEW "{viewname}" AS {viewdef}', cursor)
+
         self.connection.commit()
 
     def update(self, objects, query_id=None):
@@ -445,7 +435,7 @@ class SqlStorage:
         slct = f'SELECT * FROM ({slct}) AS tmp'
         if where:
             slct += f' WHERE {where}'
-        cursor = self._create_view(viewname, slct, sco_type)
+        cursor = self._create_view(viewname, slct, sco_type, deps=[input_view])
         self.connection.commit()
         cursor.close()
 
@@ -487,10 +477,17 @@ class SqlStorage:
         # This is DB-specific
         raise NotImplementedError('Storage.tables')
 
+    def types(self):
+        """Get all table names that correspond to SCO types"""
+        # This is DB-specific
+        raise NotImplementedError('Storage.types')
+
     def views(self):
         """Get all view names"""
-        # This is DB-specific
-        raise NotImplementedError('Storage.views')
+        stmt = 'SELECT name FROM __symtable'
+        cursor = self._query(stmt)
+        result = cursor.fetchall()
+        return [row['name'] for row in result]
 
     def table_type(self, viewname):
         """Get the SCO type for table/view `viewname`"""
@@ -593,9 +590,6 @@ class SqlStorage:
         # Need to remove `newname` if it already exists
         self._execute(f'DROP VIEW IF EXISTS "{newname}";', cursor)
         self._drop_name(cursor, newname)
-
-        # Update membership table
-        self._execute(f"UPDATE __membership SET var = '{newname}' WHERE var = '{oldname}';", cursor)
 
         # Now do the rename
         qry = re.sub(f'var = \'{oldname}\'',  # This is an ugly hack
