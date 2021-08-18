@@ -41,6 +41,7 @@ class PgStorage(SqlStorage):
         self.text_max = 'GREATEST'
         self.ifnull = 'COALESCE'
         self.dbname = dbname
+        self.infer_type = _infer_type
         if not session_id:
             session_id = 'firepit'
         self.session_id = session_id
@@ -86,9 +87,6 @@ class PgStorage(SqlStorage):
             stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
                     '(name TEXT, type TEXT, appdata TEXT);')
             self._execute(stmt, cursor)
-            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__membership" '
-                    '(sco_id TEXT, var TEXT);')
-            self._execute(stmt, cursor)
             stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__queries" '
                     '(sco_id TEXT, query_id TEXT);')
             self._execute(stmt, cursor)
@@ -111,10 +109,11 @@ class PgStorage(SqlStorage):
             logger.debug("Closing PostgreSQL DB connection")
             self.connection.close()
 
-    def _query(self, query, values=None):
+    def _query(self, query, values=None, cursor=None):
         """Private wrapper for logging SQL query"""
         logger.debug('Executing query: %s', query)
-        cursor = self.connection.cursor()
+        if not cursor:
+            cursor = self.connection.cursor()
         if not values:
             values = ()
         try:
@@ -164,12 +163,18 @@ class PgStorage(SqlStorage):
         validate_name(viewname)
         if not cursor:
             cursor = self._execute('BEGIN;')
+        is_new = True
         if not deps:
             deps = []
         elif viewname in deps:
+            is_new = False
             # Get the query that makes up the current view
             slct = self._get_view_def(viewname)
-            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            if self._is_sql_view(viewname, cursor):
+                self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            else:
+                self._execute(f'ALTER TABLE "{viewname}" RENAME TO "_{viewname}"', cursor)
+                slct = slct.replace(viewname, f'_{viewname}')
             # Swap out the viewname for its definition
             select = re.sub(f'"{viewname}"', f'({slct}) AS tmp', select)
         try:
@@ -186,7 +191,9 @@ class PgStorage(SqlStorage):
             cursor = self._execute('BEGIN;')
             self._execute(f'DROP VIEW IF EXISTS "{viewname}";', cursor)
             self._execute(f'CREATE VIEW "{viewname}" AS {select}', cursor)
-        self._new_name(cursor, viewname, sco_type)
+            is_new = False
+        if is_new:
+            self._new_name(cursor, viewname, sco_type)
         return cursor
 
     def _get_view_def(self, viewname):
@@ -195,28 +202,43 @@ class PgStorage(SqlStorage):
                              " WHERE schemaname = %s"
                              " AND viewname = %s", (self.session_id, viewname))
         viewdef = cursor.fetchone()
-        stmt = viewdef['definition'].rstrip(';')
+        if viewdef:
+            stmt = viewdef['definition'].rstrip(';')
 
-        # PostgreSQL will "expand" the original "*" to the columns
-        # that existed at that time.  We need to get the star back, to
-        # match SQLite3's behavior.
-        return re.sub(r'^.*?FROM', 'SELECT * FROM', stmt, 1, re.DOTALL)
+            # PostgreSQL will "expand" the original "*" to the columns
+            # that existed at that time.  We need to get the star back, to
+            # match SQLite3's behavior.
+            return re.sub(r'^.*?FROM', 'SELECT * FROM', stmt, 1, re.DOTALL)
+
+        # Must be a table
+        return f'SELECT * FROM "{viewname}"'
+
+    def _is_sql_view(self, name, cursor=None):
+        cursor = self._query("SELECT definition"
+                             " FROM pg_views"
+                             " WHERE schemaname = %s"
+                             " AND viewname = %s", (self.session_id, name))
+        viewdef = cursor.fetchone()
+        return viewdef is not None
 
     def tables(self):
         cursor = self._query("SELECT table_name"
                              " FROM information_schema.tables"
-                             " WHERE table_schema = %s", (self.session_id, ))
+                             " WHERE table_schema = %s"
+                             "   AND table_type != 'VIEW'", (self.session_id, ))
         rows = cursor.fetchall()
         return [i['table_name'] for i in rows
                 if not i['table_name'].startswith('__')]
 
-    def views(self):
-        cursor = self._query("SELECT table_name"
-                             " FROM information_schema.tables"
-                             " WHERE table_schema = %s"
-                             " AND table_type = 'VIEW'", (self.session_id, ))
+    def types(self):
+        stmt = ("SELECT table_name FROM information_schema.tables"
+                " WHERE table_schema = %s AND table_type != 'VIEW'"
+                "  EXCEPT SELECT name as table_name FROM __symtable")
+        cursor = self._query(stmt, (self.session_id, ))
         rows = cursor.fetchall()
-        return [i['table_name'] for i in rows]
+        # Ignore names that start with 1 or 2 underscores
+        return [i['table_name'] for i in rows
+                if not i['table_name'].startswith('_')]
 
     def columns(self, viewname):
         validate_name(viewname)
@@ -254,13 +276,15 @@ class PgStorage(SqlStorage):
             action = f'UPDATE SET {excluded}'
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([f"({', '.join([self.placeholder] * len(colnames))})"] * len(objs))
-        stmt = (f'INSERT INTO "{tablename}" ({valnames}) VALUES {placeholders}'
-                f' ON CONFLICT (id) DO {action};')
+        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES {placeholders}'
+        if 'id' in colnames:
+            stmt += f' ON CONFLICT (id) DO {action}'
         values = []
         query_values = []
         for obj in objs:
-            query_values.append(obj['id'])
-            query_values.append(query_id)
+            if query_id:
+                query_values.append(obj['id'])
+                query_values.append(query_id)
             for c in colnames:
                 value = obj.get(c, None)
                 values.append(str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
@@ -268,8 +292,9 @@ class PgStorage(SqlStorage):
                      len(objs), tablename, valnames, action)
         cursor.execute(stmt, values)
 
-        # Now add to query table as well
-        placeholders = ', '.join([f'({self.placeholder}, {self.placeholder})'] * len(objs))
-        stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
-                f' VALUES {placeholders}')
-        cursor.execute(stmt, query_values)
+        if query_id:
+            # Now add to query table as well
+            placeholders = ', '.join([f'({self.placeholder}, {self.placeholder})'] * len(objs))
+            stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
+                    f' VALUES {placeholders}')
+            cursor.execute(stmt, query_values)

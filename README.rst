@@ -10,7 +10,7 @@ Firepit - STIX Columnar Storage
         :target: https://firepit.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-.. image:: https://github.com/opencybersecurityalliance/firepit/actions/workflows/ci.yml/badge.svg
+.. image:: https://github.com/opencybersecurityalliance/firepit/actions/workflows/testing.yml/badge.svg
         :target: https://github.com/opencybersecurityalliance/firepit
         :alt: Unit Test Status
 
