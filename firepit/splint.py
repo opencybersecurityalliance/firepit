@@ -35,11 +35,11 @@ def _timefmt(ts):
 
 def _start_bundle():
     bundle_id = 'bundle--' + str(uuid.uuid4())
-    sys.stdout.write('{"type": "bundle",'
+    sys.stdout.write('{"type":"bundle",'
                      '"id": "')
     sys.stdout.write(bundle_id + '",')
-    sys.stdout.write('"spec_version": "2.0",'
-                     '"objects": [')
+    sys.stdout.write('"spec_version":"2.0",'
+                     '"objects":[')
 
 
 def _end_bundle():
@@ -107,6 +107,26 @@ def dedup_ids(
                 modified = True
             if 'modified' in obj and modified:
                 obj['modified'] = _timefmt(datetime.datetime.utcnow())
+        blob = json.dumps(obj, separators=(',', ':'))
+        if count:
+            sys.stdout.write(f',{blob}')
+        else:
+            sys.stdout.write(f'{blob}')
+        count += 1
+    _end_bundle()
+
+
+@app.command()
+def limit(
+    n: int = typer.Argument(..., help="Max number of observations"),
+    filename: str = typer.Argument(..., help="STIX bundle file"),
+):
+    """Truncate STIX bundle"""
+    _start_bundle()
+    count = 0
+    for obj in raft.get_objects(filename):
+        if count > n:
+            break
         blob = json.dumps(obj, separators=(',', ':'))
         if count:
             sys.stdout.write(f',{blob}')
