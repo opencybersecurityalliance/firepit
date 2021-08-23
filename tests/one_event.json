@@ -1,0 +1,152 @@
+{
+  "type": "bundle",
+  "id": "bundle--1198c768-9949-4052-8d49-018e99534c86",
+  "spec_version": "2.0",
+  "objects": [
+    {
+      "type": "identity",
+      "id": "identity--4216159b-35ba-4b08-8dd5-896a03c5368e",
+      "identity_class": "system",
+      "name": "qradar",
+      "created": "2021-08-23T14:07:19.596Z",
+      "modified": "2021-08-23T14:07:19.596Z"
+    },
+    {
+      "id": "observed-data--b0ced57e-970b-4767-b3df-ffddb168e0bc",
+      "type": "observed-data",
+      "created_by_ref": "identity--4216159b-35ba-4b08-8dd5-896a03c5368e",
+      "created": "2021-08-23T14:07:20.112Z",
+      "modified": "2021-08-23T14:07:20.112Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "action": "Traffic Start",
+          "outcome": "Firewall Session Opened",
+          "category": [
+            "Access"
+          ],
+          "provider": "Palo Alto PA Series",
+          "agent": "PaSeries @ firewall.time4demo.com",
+          "created": "2021-08-23T14:02:09.000Z",
+          "network_ref": "4",
+          "host_ref": "5",
+          "original_ref": "10"
+        },
+        "1": {
+          "type": "x-qradar",
+          "qid": 53512405,
+          "category_id": 4007,
+          "high_level_category_id": 4000,
+          "log_source_id": 114,
+          "device_type": 206,
+          "direction": "L2L",
+          "credibility": 10,
+          "relevance": 10,
+          "cre_event_list": [
+            "100013",
+            "100033",
+            "100489",
+            "100103",
+            "100227",
+            "100225",
+            "100258",
+            "100257",
+            "122989",
+            "100221",
+            "100297",
+            "100272",
+            "100219",
+            "100218",
+            "100215"
+          ],
+          "domain_id": 0,
+          "domain_name": "Default Domain",
+          "has_offense": "false"
+        },
+        "2": {
+          "type": "x-ibm-finding",
+          "start": "2021-08-23T14:02:11.113Z",
+          "end": "2021-08-23T14:02:11.113Z",
+          "src_ip_ref": "3",
+          "dst_ip_ref": "7",
+          "event_count": 1,
+          "finding_type": "event",
+          "magnitude": 6,
+          "severity": 0,
+          "src_geolocation": "NorthAmerica.UnitedStates",
+          "dst_geolocation": "NorthAmerica.UnitedStates",
+          "rule_names": [
+            "BB:PortDefinition: DNS Ports",
+            "BB:ProtocolDefinition: Windows Protocols",
+            "BB:UBA : Common Log Source Filters",
+            "BB:CategoryDefinition: Firewall or ACL Accept",
+            "Source Asset Weight is Low",
+            "Source Asset Exists",
+            "BB:DeviceDefinition: IDS / IPS",
+            "BB:DeviceDefinition: FW / Router / Switch",
+            "BB:CategoryDefinition: Firewall or ACL Accept Event for a FW/Router/Switch Device",
+            "Destination Asset Weight is Low",
+            "BB:PortDefinition: Authorized L2R Ports",
+            "Load Basic Building Blocks",
+            "Destination Asset Port is Open",
+            "Destination Asset Exists",
+            "Context is Local to Local"
+          ]
+        },
+        "3": {
+          "type": "ipv4-addr",
+          "value": "10.95.79.130",
+          "resolves_to_refs": [
+            "6"
+          ]
+        },
+        "4": {
+          "type": "network-traffic",
+          "src_ref": "3",
+          "src_port": 48589,
+          "dst_ref": "7",
+          "dst_port": 53,
+          "protocols": [
+            "udp"
+          ]
+        },
+        "5": {
+          "type": "x-oca-asset",
+          "ip_refs": [
+            "3",
+            "9"
+          ],
+          "mac_refs": [
+            "6"
+          ]
+        },
+        "6": {
+          "type": "mac-addr",
+          "value": "00:00:00:00:00:00"
+        },
+        "7": {
+          "type": "ipv4-addr",
+          "value": "10.5.146.130",
+          "resolves_to_refs": [
+            "8"
+          ]
+        },
+        "8": {
+          "type": "mac-addr",
+          "value": "00:00:00:00:00:00"
+        },
+        "9": {
+          "type": "ipv4-addr",
+          "value": "0.0.0.0"
+        },
+        "10": {
+          "type": "artifact",
+          "payload_bin": "PDE0PkF1ZyAyMyAxMDowMjoxMCBmaXJld2FsbC50aW1lNGRlbW8uY29tIExFRUY6Mi4wfFBhbG8gQWx0byBOZXR3b3Jrc3xQQU4tT1MgU3lzbG9nIEludGVncmF0aW9ufDEwLjAuMHxhbGxvd3x4N0N8Y2F0PVRSQUZGSUN8UmVjZWl2ZVRpbWU9MjAyMS8wOC8yMyAxMDowMjowOXxTZXJpYWxOdW1iZXI9fFR5cGU9VFJBRkZJQ3xTdWJ0eXBlPXN0YXJ0fGRldlRpbWU9QXVnIDIzIDIwMjEgMTQ6MDI6MDkgR01UfHNyYz0xMC45NS43OS4xMzB8ZHN0PTEwLjUuMTQ2LjEzMHxzcmNQb3N0TkFUPTAuMC4wLjB8ZHN0UG9zdE5BVD0wLjAuMC4wfFJ1bGVOYW1lPW1nbXQtYWxsb3ctYWxsfHVzck5hbWU9fFNvdXJjZVVzZXI9fERlc3RpbmF0aW9uVXNlcj18QXBwbGljYXRpb249ZG5zfFZpcnR1YWxTeXN0ZW09dnN5czF8U291cmNlWm9uZT1TRUNORVRfTUdUfERlc3RpbmF0aW9uWm9uZT1TRUNORVRfTUdUfEluZ3Jlc3NJbnRlcmZhY2U9ZXRoZXJuZXQxLzF8RWdyZXNzSW50ZXJmYWNlPWV0aGVybmV0MS8xfExvZ0ZvcndhcmRpbmdQcm9maWxlPXFyYWRhci1mb3J3YXJkLXByb2ZpbGV8U2Vzc2lvbklEPTg5MXxSZXBlYXRDb3VudD0xfHNyY1BvcnQ9NDg1ODl8ZHN0UG9ydD01M3xzcmNQb3N0TkFUUG9ydD0wfGRzdFBvc3ROQVRQb3J0PTB8RmxhZ3M9MHg4MDAwfHByb3RvPXVkcHxhY3Rpb249YWxsb3d8dG90YWxCeXRlcz04Nnxkc3RCeXRlcz0wfHNyY0J5dGVzPTg2fHRvdGFsUGFja2V0cz0xfFN0YXJ0VGltZT0yMDIxLzA4LzIzIDEwOjAyOjA3fEVsYXBzZWRUaW1lPTB8VVJMQ2F0ZWdvcnk9YW55fHNlcXVlbmNlPTE1NTk5MTczfEFjdGlvbkZsYWdzPTB4MHxTb3VyY2VMb2NhdGlvbj0xMC4wLjAuMC0xMC4yNTUuMjU1LjI1NXxEZXN0aW5hdGlvbkxvY2F0aW9uPTEwLjAuMC4wLTEwLjI1NS4yNTUuMjU1fGRzdFBhY2tldHM9MHxzcmNQYWNrZXRzPTF8U2Vzc2lvbkVuZFJlYXNvbj1uL2F8RGV2aWNlR3JvdXBIaWVyYXJjaHlMMT0wfERldmljZUdyb3VwSGllcmFyY2h5TDI9MHxEZXZpY2VHcm91cEhpZXJhcmNoeUwzPTB8RGV2aWNlR3JvdXBIaWVyYXJjaHlMND0wfHZTcmNOYW1lPXxEZXZpY2VOYW1lPWZpcmV3YWxsfEFjdGlvblNvdXJjZT1mcm9tLXBvbGljeXxTcmNVVUlEPXxEc3RVVUlEPXxUdW5uZWxJRD0wfE1vbml0b3JUYWc9fFBhcmVudFNlc3Npb25JRD0wfFBhcmVudFN0YXJ0VGltZT18VHVubmVsVHlwZT1OL0EK"
+        }
+      },
+      "first_observed": "2021-08-23T14:02:11.113Z",
+      "last_observed": "2021-08-23T14:02:11.113Z",
+      "number_observed": 1
+    }
+  ]
+}

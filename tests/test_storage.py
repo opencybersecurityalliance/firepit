@@ -544,3 +544,29 @@ def test_clobber_viewname(fake_bundle_file_2, tmpdir):
     # conns2 should be no more:
     with pytest.raises(UnknownViewname):
         store.lookup('conns2')
+
+
+def test_three_ips(one_event_bundle, tmpdir):
+    """A single Observation SDO can contain any arbitrary number and type
+    of SCOs.  In the case that one type appears multiple times,
+    firepit will attempt to mark one as the "primary", or most
+    significant, instance by setting an "x_root" attribute to 1 (note
+    that this name may change in the future).
+
+    A common case is `ipv4-addr`: if you have a `network-traffic`
+    object, then you usally have 2 `ipv4-addr` (or `ipv6-addr`)
+    objects.  In that case, firepit will (arbitrarily) pick the object
+    referenced as the `src_ref` to be the "primary".
+
+    This test case involves 1 Observation with 3 IP addresses.  One is
+    `src_ref`, one is `dst_ref`, and third is...well, ask the QRadar
+    people, I guess.
+
+    """
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [one_event_bundle])
+
+    results = store._query('SELECT value FROM "ipv4-addr" WHERE "x_root" IS NOT NULL')
+    rows = results.fetchall()
+    assert len(rows) == 1  # There can be only 1!!!
+    assert rows[0]['value'] == '10.95.79.130'
