@@ -13,14 +13,14 @@ with open('HISTORY.rst') as history_file:
 requirements = [
     'ijson',
     'lark-parser',
-    'orjson==3.3.1',
+    'orjson>=3.3.1',
     'psycopg2-binary',
     'tabulate',
     'typer',
     'ujson'
 ]
 
-setup_requirements = ['pytest-runner', ]
+setup_requirements = ['pytest-runner', 'wheel']
 
 test_requirements = ['pytest>=3', ]
 
@@ -37,6 +37,7 @@ setup(
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
     ],
     description="Columnar storage for STIX 2.0 observations.",
     entry_points={
@@ -55,7 +56,7 @@ setup(
     setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
-    url='https://github.com/IBM/firepit',
-    version='1.1.0',
+    url='https://github.com/opencybersecurityalliance/firepit',
+    version='1.2.1',
     zip_safe=False,
 )

@@ -7,6 +7,7 @@ probably don't want to use this for anything serious.
 
 import re
 from collections import OrderedDict
+from collections import defaultdict
 
 import ijson
 import orjson
@@ -275,7 +276,11 @@ def markroot(obj, viewname='observed-data'):
         return [obj]
     objs = obj['objects']
     reffed = set()
+
+    # Keep track of the preference order of each reffed object, by type
+    prefs = defaultdict(list)
     for idx, sco in objs.items():
+        prefs[sco['type']].append(idx)
         for attr, val in json_normalize(sco, flat_lists=False).items():
             if attr.endswith('_ref'):
                 if val not in objs or val == idx:
@@ -284,11 +289,13 @@ def markroot(obj, viewname='observed-data'):
                 # only mark the root (think process:parent_ref)
                 if objs[idx]['type'] == objs[val]['type']:
                     _mark_tree(objs, val, reffed)
-                elif (objs[idx]['type'] == 'network-traffic' and
-                      objs[val]['type'].endswith('-addr') and
-                      'dst_' in attr):
-                    # For src/dst pairs, consider the src as the root (so add dst to reffed)
-                    reffed.add(val)
+                elif (objs[val]['type'].endswith('-addr')):
+                    if 'dst_' in attr:
+                        # For src/dst pairs, consider the src as the root (so add dst to reffed)
+                        reffed.add(val)
+                    elif attr.endswith('src_ref'):
+                        # Save ref as the "preferred" object for this type
+                        prefs[objs[val]['type']].insert(0, val)
                 elif val in reffed:
                     reffed.add(idx)
             elif attr.endswith('_refs'):
@@ -299,7 +306,9 @@ def markroot(obj, viewname='observed-data'):
                         reffed.add(ref)
     for k, v in objs.items():
         if k not in reffed:
-            objs[k]['x_root'] = 1
+            # Check if there's a more preferred object
+            if v['type'] not in prefs or prefs[v['type']][0] == k:
+                objs[k]['x_root'] = 1
     return [obj]
 
 

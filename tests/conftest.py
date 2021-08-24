@@ -35,3 +35,9 @@ def fake_bundle_list():
         os.path.join(cwd, 'conn_a.json'),
         os.path.join(cwd, 'conn_b.json')
     ]
+
+
+@pytest.fixture
+def one_event_bundle():
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(cwd, 'one_event.json')
