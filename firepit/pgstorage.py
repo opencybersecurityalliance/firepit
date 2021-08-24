@@ -92,7 +92,8 @@ class PgStorage(SqlStorage):
             self._execute(stmt, cursor)
             self.connection.commit()
             cursor.close()
-        except psycopg2.errors.DuplicateFunction:
+        except (psycopg2.errors.DuplicateFunction, psycopg2.errors.UniqueViolation):
+            # We probably already created all these, so ignore this
             self.connection.rollback()
 
     def _get_writer(self, prefix):
