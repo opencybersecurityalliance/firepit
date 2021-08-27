@@ -92,7 +92,8 @@ class PgStorage(SqlStorage):
             self._execute(stmt, cursor)
             self.connection.commit()
             cursor.close()
-        except psycopg2.errors.DuplicateFunction:
+        except (psycopg2.errors.DuplicateFunction, psycopg2.errors.UniqueViolation):
+            # We probably already created all these, so ignore this
             self.connection.rollback()
 
     def _get_writer(self, prefix):
@@ -264,20 +265,19 @@ class PgStorage(SqlStorage):
         self.connection.commit()
         cursor.close()
 
-    def upsert_many(self, cursor, tablename, objs, query_id):
-        cols = set()
-        for obj in objs:
-            cols = cols.union(obj.keys())
-        colnames = list(cols)
-        if tablename == 'identity':
-            action = 'NOTHING'
-        else:
-            excluded = self._get_excluded(colnames, tablename)
-            action = f'UPDATE SET {excluded}'
-        valnames = ', '.join([f'"{x}"' for x in colnames])
+    def upsert_many(self, cursor, tablename, objs, query_id, schema):
+        colnames = list(schema.keys())
+        quoted_colnames = [f'"{x}"' for x in colnames]
+        valnames = ', '.join(quoted_colnames)
+
         placeholders = ', '.join([f"({', '.join([self.placeholder] * len(colnames))})"] * len(objs))
         stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES {placeholders}'
         if 'id' in colnames:
+            if tablename == 'identity':
+                action = 'NOTHING'
+            else:
+                excluded = self._get_excluded(colnames, tablename)
+                action = f'UPDATE SET {excluded}'
             stmt += f' ON CONFLICT (id) DO {action}'
         values = []
         query_values = []
@@ -288,8 +288,6 @@ class PgStorage(SqlStorage):
             for c in colnames:
                 value = obj.get(c, None)
                 values.append(str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
-        logger.debug('upsert_many: count=%d table=%s columns=%s action=%s"',
-                     len(objs), tablename, valnames, action)
         cursor.execute(stmt, values)
 
         if query_id:
