@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 
 """
-Raft: Streaming processing of STIX data.  EXPERIMENTAL - you
-probably don't want to use this for anything serious.
+Raft: Streaming processing of STIX Observation SDOs (`observed-data`).
 """
 
-import re
 from collections import OrderedDict
 from collections import defaultdict
 
@@ -82,18 +80,6 @@ def _is_custom_prop(prop):
     return prop.startswith('x_')
 
 
-def _is_ref(name):
-    return name.endswith('_ref') \
-        or name.endswith('_refs')
-
-
-def _add_to_refs(obj, prop, val):
-    if prop not in val:
-        obj[prop] = [val]
-    else:
-        obj[prop].append(val)
-
-
 def _set_id(idx, obs, oid):
     stype = obs['type']
     uid = oid.lstrip('observed-data')
@@ -105,14 +91,12 @@ def preserve(obj):
     '''Stash the "raw" STIX JSON as a stirng attribute in the object itself'''
     if obj['type'] == 'observed-data':
         obj['x_stix'] = ujson.dumps(obj)
-    return [obj]
+    return obj
 
 
 def promote(obj):
     '''Given an Observation, "promote" contained SCOs to top level'''
     # TODO: also "promote"/synthesize SROs for references?
-    if 'objects' not in obj:
-        return [obj]
     observables = obj['objects']
     oid = obj['id']
     object_refs = []
@@ -125,7 +109,7 @@ def promote(obj):
                     obs[prop] = obj[prop]
             uid = _set_id(idx, obs, oid)
             for prop, val in obs.items():
-                if _is_ref(prop):
+                if prop.endswith('_ref') or prop.endswith('_refs'):
                     if not isinstance(val, list):
                         val = [val]
                     for ref in val:
@@ -150,22 +134,25 @@ def promote(obj):
 
 
 def makeid(obj):
-    '''Add unique object IDs to SCOs inside an Observation SDO'''
-    if 'objects' not in obj:
-        return [obj]
+    '''
+    Deprecated: moved into `markroot`
+    Add unique object IDs to SCOs inside an Observation SDO
+    '''
     oid = obj['id']
     observables = obj.get('objects', {})
     for idx, obs in observables.items():
         _set_id(idx, obs, oid)
-    return [obj]
+    return obj
 
 
 def _resolve(obs_orig, observables):
     obs = {}
+    is_custom_obj = _is_custom_obj(obs_orig)  #obs_orig['type'].startswith('x-')
     for prop, val in obs_orig.items():
-        if _is_ref(prop) and prop != 'child_refs':
+        if ((prop.endswith('_ref') or prop.endswith('_refs')) and
+            prop != 'child_refs'):
             id_only = False
-            if _is_custom_obj(obs_orig) and not _is_custom_prop(prop):
+            if is_custom_obj and not _is_custom_prop(prop):  # prop.startswith('x_'):
                 id_only = True
             if not isinstance(val, list):
                 if val in observables:
@@ -190,15 +177,13 @@ def _resolve(obs_orig, observables):
 # TODO: rename to "dereference"?  "resolve"?
 def nest(obj):
     '''Resolve refs with deep copy'''
-    if 'objects' not in obj:
-        return [obj]
     object_refs = []
     observables = obj.get('objects', {})
-    for idx, obs_orig in observables.items():
+    for _, obs_orig in observables.items():
         object_refs.append(_resolve(obs_orig, observables))
     del obj['objects']
     obj['objects'] = object_refs
-    return [obj]
+    return obj
 
 
 def json_normalize(d, prefix='', sep='.', flat_lists=True):
@@ -213,12 +198,13 @@ def json_normalize(d, prefix='', sep='.', flat_lists=True):
                 key = f"'{k}'"
         else:
             key = k
-        key = prefix + sep + key if prefix else key
+        if prefix:
+            key = f'{prefix}{sep}{key}'
         if isinstance(v, dict):
             r.update(json_normalize(v, key, sep, flat_lists))
         elif flat_lists and isinstance(v, list):
             for i, val in enumerate(v):
-                r[key + f'[{i}]'] = val
+                r[f'{key}[{i}]'] = val
         else:
             r[key] = v
     return r
@@ -226,21 +212,18 @@ def json_normalize(d, prefix='', sep='.', flat_lists=True):
 
 def normalize(obj):
     """Normalize obj to a flat dict"""
-    return [json_normalize(obj, flat_lists=False)]
+    return json_normalize(obj, flat_lists=False)
 
 
 def invert(obj):
     '''Invert reference lists so all refs are 1:1'''
-    if obj['type'] != 'observed-data':
-        return [obj]
-
     objects = obj['objects']
 
     for k, v in objects.items():
         reflists = []
         for attr, val in v.items():
             if attr.endswith('_refs') and isinstance(val, list):
-                refname = re.sub(r'([a-z0-9_-]*)_refs', r'x_\g<1>_of_ref', attr)
+                refname = 'x_' + attr.rstrip('_refs') + '_of_ref'
                 refname = INVERTED_REFS.get(refname, refname)
                 for ref in val:
                     if ref not in objects or ref == k:  # Detect bogus refs
@@ -251,10 +234,10 @@ def invert(obj):
 
         for attr in reflists:
             # Record the count of the ref list we've inverted
-            v[re.sub(r'([a-z0-9_-]*)_refs', r'x_\g<1>_count', attr)] = len(v[attr])
+            v['x_' + attr.rstrip('_refs') + '_count'] = len(v[attr])
             del v[attr]
 
-    return [obj]
+    return obj
 
 
 def _mark_tree(objs, k, reffed):
@@ -271,17 +254,25 @@ def _mark_tree(objs, k, reffed):
                 _mark_tree(objs, ref, reffed)
 
 
-def markroot(obj, viewname='observed-data'):
-    if obj['type'] != 'observed-data':
-        return [obj]
+def markroot(obj):
+    """
+    If a SCO type appears multiple times in one observation, attempt
+    to mark one as the "primary", or most significant, instance by
+    setting an "x_root" attribute to 1
+
+    The `makeid` transform was rolled into here as an optimization.
+
+    """
     objs = obj['objects']
     reffed = set()
+    oid = obj['id']
 
     # Keep track of the preference order of each reffed object, by type
     prefs = defaultdict(list)
     for idx, sco in objs.items():
+        _set_id(idx, sco, oid)
         prefs[sco['type']].append(idx)
-        for attr, val in json_normalize(sco, flat_lists=False).items():
+        for attr, val in sco.items():
             if attr.endswith('_ref'):
                 if val not in objs or val == idx:
                     continue
@@ -305,24 +296,36 @@ def markroot(obj, viewname='observed-data'):
                     if objs[idx]['type'] == objs[ref]['type']:
                         reffed.add(ref)
     for k, v in objs.items():
+        vtype = v['type']
         if k not in reffed:
             # Check if there's a more preferred object
-            if v['type'] not in prefs or prefs[v['type']][0] == k:
+            if vtype not in prefs:
                 objs[k]['x_root'] = 1
-    return [obj]
+            else:
+                for i in prefs[vtype]:
+                    if i in reffed:
+                        continue
+                    elif i == k:
+                        objs[k]['x_root'] = 1
+                    break
+    return obj
 
 
-def transform(ops, filename, op_arg=None):
+def transform(ops, filename):
     for obj in get_objects(filename, ['identity', 'observed-data']):
-        inputs = [obj]
-        for op in ops:  # making ops composable might be overkill (plus hard)
-            results = []
-            for i in inputs:
-                if op_arg:
-                    results.extend(globals()[op](i, op_arg))
-                else:
-                    results.extend(globals()[op](i))
-            inputs = results
+        if obj['type'] == 'observed-data':
+            inputs = [obj]
+            for op in ops:  # making ops composable might be overkill (plus hard)
+                results = []
+                for i in inputs:
+                    r = globals()[op](i)
+                    if isinstance(r, list):
+                        results.extend(r)
+                    else:
+                        results.append(r)
+                inputs = results
+        else:
+            results = [obj]
         for result in results:
             yield result
 
@@ -331,8 +334,7 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser('raft - streaming operations on STIX')
     parser.add_argument('op', metavar='OP')
-    parser.add_argument('op_arg', metavar='ARG', nargs='?')  # Goofy
     parser.add_argument('filename', metavar='FILENAME')
     args = parser.parse_args()
-    for result in transform(args.op.split(','), args.filename, args.op_arg):
+    for result in transform(args.op.split(','), args.filename):
         print(str(orjson.dumps(result), 'utf-8'))

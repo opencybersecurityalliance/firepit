@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from collections import OrderedDict, defaultdict
@@ -113,7 +112,7 @@ class SqlWriter:
         tablename = f'{self.prefix}{obj_type}'
         self.store._add_column(tablename, prop_name, prop_type)
 
-    def write_records(self, obj_type, records, _, replace, query_id):
+    def write_records(self, obj_type, records, schema, replace, query_id):
         tablename = f'{self.prefix}{obj_type}'
         try:
             cursor = self.store.connection.cursor()
@@ -122,7 +121,7 @@ class SqlWriter:
                 for obj in records:
                     self._replace(cursor, tablename, obj)
             else:
-                self.store.upsert_many(cursor, tablename, records, query_id)
+                self.store.upsert_many(cursor, tablename, records, query_id, schema)
             cursor.execute('COMMIT')
         finally:
             cursor.close()
@@ -175,14 +174,18 @@ class SplitWriter:
         if not schema:
             schema = {}
             add_table = True
-        obj = {key: val for key, val in obj.items() if len(key) <= 63}
+        new_obj = {}
         for key, value in obj.items():
+            if len(key) > 63:
+                continue
+            new_obj[key] = value
             if key not in schema:
                 if not add_table:
                     add_col = True
                 col_type = self.writer.infer_type(key, value)
                 schema[key] = col_type
                 new_columns[key] = col_type
+        obj = new_obj
         if add_table:
             self.schemas[obj_type] = schema
             try:
