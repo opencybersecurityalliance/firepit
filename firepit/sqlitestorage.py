@@ -55,7 +55,7 @@ class SQLiteStorage(SqlStorage):
         self._initdb(cursor)
         cursor.close()
 
-    def _get_writer(self, prefix):
+    def _get_writer(self, **kwargs):
         """Get a DB inserter object"""
         filedir = os.path.dirname(self.dbname)
         return SqlWriter(filedir, self, infer_type=infer_type)

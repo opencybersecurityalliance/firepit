@@ -1,10 +1,12 @@
 import logging
 import os
 import re
+from functools import lru_cache
 
 import orjson
 import psycopg2
 import psycopg2.extras
+import ujson
 
 from firepit.exceptions import DuplicateTable
 from firepit.exceptions import InvalidAttr
@@ -31,6 +33,80 @@ def _infer_type(key, value):
         # Fall back to defaults
         rtype = infer_type(key, value)
     return rtype
+
+
+# PostgreSQL defaults for COPY text format
+SEP = '\t'
+TEXT_ESCAPE_TABLE = str.maketrans({
+    '\\': '\\\\',
+    '\n': '\\n',
+    '\r': '\\r',
+    SEP: f'\\{SEP}'
+})
+
+
+@lru_cache(maxsize=256, typed=True)
+def _text_encode(value):
+    if value is None:
+        return r'\N'
+    elif not isinstance(value, str):
+        return str(value)
+    # MUST "escape" special chars
+    return value.translate(TEXT_ESCAPE_TABLE)
+
+
+class ListToTextIO:
+    """
+    Convert an iterable of lists into a file-like object with
+    PostgreSQL TEXT formatting
+    """
+
+    def __init__(self, objs, cols, sep=SEP):
+        self.it = iter(objs)
+        self.cols = cols
+        self.sep = sep
+        self.buf = ''
+
+    def read(self, n):
+        result = ''
+        try:
+            while n > len(self.buf):
+                obj = next(self.it)
+                vals = [ujson.dumps(val) if isinstance(val, list)
+                        else _text_encode(val) for val in obj]
+                self.buf += self.sep.join(vals) + '\n'
+            result = self.buf[:n]
+            self.buf = self.buf[n:]
+        except StopIteration:
+            result = self.buf
+            self.buf = ''
+        return result
+
+
+class TuplesToTextIO:
+    """
+    Convert an iterable of tuples into a file-like object
+    """
+
+    def __init__(self, objs, cols, sep=SEP):
+        self.it = iter(objs)
+        self.cols = cols
+        self.sep = sep
+        self.buf = ''
+
+    def read(self, n):
+        result = ''
+        try:
+            while n > len(self.buf):
+                obj = next(self.it)
+                self.buf += self.sep.join(obj)
+                self.buf += '\n'
+            result = self.buf[:n]
+            self.buf = self.buf[n:]
+        except StopIteration:
+            result = self.buf
+            self.buf = ''
+        return result
 
 
 class PgStorage(SqlStorage):
@@ -96,14 +172,16 @@ class PgStorage(SqlStorage):
             # We probably already created all these, so ignore this
             self.connection.rollback()
 
-    def _get_writer(self, prefix):
+    def _get_writer(self, **kwargs):
         """Get a DB inserter object"""
         filedir = os.path.dirname(self.dbname)
         return SqlWriter(
             filedir,
             self,
             placeholder=self.placeholder,
-            infer_type=_infer_type)
+            infer_type=_infer_type,
+            **kwargs
+        )
 
     def __del__(self):
         if self.connection:
@@ -265,7 +343,14 @@ class PgStorage(SqlStorage):
         self.connection.commit()
         cursor.close()
 
-    def upsert_many(self, cursor, tablename, objs, query_id, schema):
+    def upsert_many(self, cursor, tablename, objs, query_id, schema, **kwargs):
+        use_copy = kwargs.get('use_copy')
+        if use_copy:
+            self.upsert_copy(cursor, tablename, objs, query_id, schema)
+        else:
+            self.upsert_multirow(cursor, tablename, objs, query_id, schema)
+
+    def upsert_multirow(self, cursor, tablename, objs, query_id, schema):
         colnames = list(schema.keys())
         quoted_colnames = [f'"{x}"' for x in colnames]
         valnames = ', '.join(quoted_colnames)
@@ -273,6 +358,7 @@ class PgStorage(SqlStorage):
         placeholders = ', '.join([f"({', '.join([self.placeholder] * len(colnames))})"] * len(objs))
         stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES {placeholders}'
         if 'id' in colnames:
+            idx = colnames.index('id')
             if tablename == 'identity':
                 action = 'NOTHING'
             else:
@@ -283,11 +369,9 @@ class PgStorage(SqlStorage):
         query_values = []
         for obj in objs:
             if query_id:
-                query_values.append(obj['id'])
+                query_values.append(obj[idx])
                 query_values.append(query_id)
-            for c in colnames:
-                value = obj.get(c, None)
-                values.append(str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
+            values.extend([str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value for value in obj])
         cursor.execute(stmt, values)
 
         if query_id:
@@ -296,3 +380,37 @@ class PgStorage(SqlStorage):
             stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
                     f' VALUES {placeholders}')
             cursor.execute(stmt, query_values)
+
+    def upsert_copy(self, cursor, tablename, objs, query_id, schema):
+        colnames = list(schema.keys())
+        quoted_colnames = [f'"{x}"' for x in colnames]
+        valnames = ', '.join(quoted_colnames)
+
+        # Create a temp table that copies the structure of `tablename`
+        cursor.execute(f'CREATE TEMP TABLE tmp AS SELECT * FROM "{tablename}" WHERE 1=2;')
+
+        # Create a generator over `objs` that returns text formatted objects
+        copy_stmt = f"COPY tmp({valnames}) FROM STDIN WITH DELIMITER '{SEP}'"
+        cursor.copy_expert(copy_stmt, ListToTextIO(objs, colnames, sep=SEP))
+
+        # Now SELECT from TEMP table to real table
+        stmt = (f'INSERT INTO "{tablename}" ({valnames})'
+                f' SELECT {valnames} FROM tmp')
+        if 'id' in colnames:
+            if tablename == 'identity':
+                action = 'NOTHING'
+            else:
+                excluded = self._get_excluded(colnames, tablename)
+                action = f'UPDATE SET {excluded}'
+            stmt += f'  ON CONFLICT (id) DO {action}'
+        cursor.execute(stmt)
+
+        # Don't need the temp table anymore
+        cursor.execute('DROP TABLE tmp')
+
+        if query_id and 'id' in colnames:
+            # Now add to query table as well
+            idx = colnames.index('id')
+            copy_stmt = f"COPY __queries(sco_id, query_id) FROM STDIN WITH DELIMITER '{SEP}'"
+            qobjs = [(obj[idx], query_id) for obj in objs]
+            cursor.copy_expert(copy_stmt, TuplesToTextIO(qobjs, ['sco_id', 'query_id'], sep=SEP))
