@@ -632,3 +632,8 @@ class SqlStorage:
 
         self.connection.commit()
         cursor.close()
+
+    def finish(self):
+        """Do any DB-specific post-caching/insertion activity, such as indexing"""
+        # This is a DB-specific hook, but by default we'll do nothing
+        pass

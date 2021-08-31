@@ -118,6 +118,7 @@ class PgStorage(SqlStorage):
         self.ifnull = 'COALESCE'
         self.dbname = dbname
         self.infer_type = _infer_type
+        self.defer_index = False
         if not session_id:
             session_id = 'firepit'
         self.session_id = session_id
@@ -174,6 +175,7 @@ class PgStorage(SqlStorage):
 
     def _get_writer(self, **kwargs):
         """Get a DB inserter object"""
+        self.defer_index = kwargs.get('defer_index', self.defer_index)
         filedir = os.path.dirname(self.dbname)
         return SqlWriter(
             filedir,
@@ -214,7 +216,7 @@ class PgStorage(SqlStorage):
         logger.debug('_create_table: "%s"', stmt)
         try:
             cursor = self._execute(stmt)
-            if 'x_contained_by_ref' in columns:
+            if not self.defer_index and 'x_contained_by_ref' in columns:
                 self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
             self.connection.commit()
             cursor.close()
@@ -414,3 +416,12 @@ class PgStorage(SqlStorage):
             copy_stmt = f"COPY __queries(sco_id, query_id) FROM STDIN WITH DELIMITER '{SEP}'"
             qobjs = [(obj[idx], query_id) for obj in objs]
             cursor.copy_expert(copy_stmt, TuplesToTextIO(qobjs, ['sco_id', 'query_id'], sep=SEP))
+
+    def finish(self):
+        if self.defer_index:
+            cursor = self._execute('BEGIN;')
+            for tablename in self.tables():
+                if 'x_contained_by_ref' in self.columns(tablename):
+                    self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+            self.connection.commit()
+            cursor.close()
