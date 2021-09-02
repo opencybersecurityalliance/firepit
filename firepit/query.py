@@ -120,11 +120,12 @@ class Projection:
 class Table:
     """SQL Table selection"""
 
-    def __init__(self, name):
+    def __init__(self, name, prefix=''):
         self.name = name
+        self.prefix = prefix
 
     def render(self, placeholder):
-        return self.name
+        return f'{self.prefix}"{self.name}"'
 
 
 class Group:
@@ -229,20 +230,21 @@ class CountUnique:
 class Join:
     """Join 2 tables"""
 
-    def __init__(self, name, left_col, op, right_col, how='INNER'):
+    def __init__(self, name, left_col, op, right_col, how='INNER',prefix=''):
         self.prev_name = None
+        self.prefix=prefix
         self.name = name
         self.left_col = left_col
         self.op = op
         self.right_col = right_col
         self.how = how
 
+
     def render(self, placeholder):
         # Assume there's a FROM before this?
-        return (f'{self.how.upper()} JOIN "{self.name}"'
-                f' ON "{self.prev_name}"."{self.left_col}"'
-                f' {self.op} "{self.name}"."{self.right_col}"')
-
+        return (f'{self.how.upper()} JOIN {self.prefix}"{self.name}"'
+            f' ON {self.prefix}"{self.prev_name}"."{self.left_col}"'
+            f' {self.op} {self.prefix}"{self.name}"."{self.right_col}"')
 
 class Query:
     def __init__(self):
@@ -293,7 +295,7 @@ class Query:
         for stage in self.stages:
             text = stage.render(placeholder)
             if isinstance(stage, Table):
-                query = f'FROM "{text}"'
+                query = f'FROM {text}'
             elif isinstance(stage, Projection):
                 query = f'SELECT {text} {query}'
             elif isinstance(stage, Filter):

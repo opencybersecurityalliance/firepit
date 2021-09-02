@@ -70,6 +70,7 @@ class SqlStorage:
         # Function that returns first non-null arg_type
         self.ifnull = 'IFNULL'
 
+        self.db_schema_prefix = ''
         # Python-to-SQL type mapper
         self.infer_type = infer_type
 
@@ -90,12 +91,12 @@ class SqlStorage:
         cursor.close()
 
     def _new_name(self, cursor, name, sco_type):
-        stmt = ('INSERT INTO "__symtable" (name, type)'
+        stmt = (f'INSERT INTO {self.db_schema_prefix}"__symtable" (name, type)'
                 f' VALUES ({self.placeholder}, {self.placeholder});')
         cursor.execute(stmt, (name, sco_type))
 
     def _drop_name(self, cursor, name):
-        stmt = f'DELETE FROM "__symtable" WHERE name = {self.placeholder};'
+        stmt = f'DELETE FROM {self.db_schema_prefix}"__symtable" WHERE name = {self.placeholder};'
         cursor.execute(stmt, (name,))
 
     def _execute(self, statement, cursor=None):
@@ -133,7 +134,7 @@ class SqlStorage:
         if cols != "*":
             cols = ", ".join([f'"{col}"' if not col.startswith("'") else col for col in cols])
 
-        stmt = f'SELECT {cols} FROM "{tvname}"'
+        stmt = f'SELECT {cols} FROM {self.db_schema_prefix}"{tvname}"'
         if where:
             stmt += f' WHERE {where}'
         if groupby:
@@ -153,7 +154,7 @@ class SqlStorage:
                 if agg:
                     aggs.append(agg)
             group_cols = ', '.join(aggs)
-            stmt = f'SELECT {group_cols} from "{tvname}"'
+            stmt = f'SELECT {group_cols} from {self.db_schema_prefix}"{tvname}"'
             stmt += f' GROUP BY "{groupby}"'
         if sortby:
             validate_path(sortby)
@@ -166,6 +167,7 @@ class SqlStorage:
             if not isinstance(offset, int):
                 raise TypeError('LIMIT must be an integer')
             stmt += f' OFFSET {offset}'
+        print("SqlStorage _select %s"%stmt)
         return stmt
 
     def _create_table(self, tablename, columns):
@@ -362,7 +364,7 @@ class SqlStorage:
         cursor = self._execute('BEGIN;')
         if 'id' not in objects[0]:
             # Maybe it's aggregates?  Do "copy-on-write"
-            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            self._execute(f'DROP VIEW IF EXISTS {self.db_schema_prefix}"{viewname}"', cursor)
             columns = list(objects[0].keys())
             schema = {}
             for col in columns:
@@ -387,10 +389,10 @@ class SqlStorage:
                 splitter.write(obj)
             splitter.close()
             viewdef = self._get_view_def(viewname)
-            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            self._execute(f'DROP VIEW IF EXISTS {self.db_schema_prefix}"{viewname}"', cursor)
 
             # Recreate view
-            self._execute(f'CREATE VIEW "{viewname}" AS {viewdef}', cursor)
+            self._execute(f'CREATE VIEW {self.db_schema_prefix}"{viewname}" AS {viewdef}', cursor)
 
         self.connection.commit()
 
@@ -497,7 +499,7 @@ class SqlStorage:
     def count(self, viewname):
         """Get the count of objects (rows) in `viewname`"""
         validate_name(viewname)
-        stmt = f'SELECT COUNT(*) FROM "{viewname}"'
+        stmt = f'SELECT COUNT(*) FROM {self.db_schema_prefix}"{viewname}"'
         cursor = self._query(stmt)
         res = cursor.fetchone()
         return list(res.values())[0] if res else 0
@@ -523,7 +525,7 @@ class SqlStorage:
         """Get the SCO type for table/view `viewname`"""
         validate_name(viewname)
         #stmt = f'SELECT "type" FROM "{viewname}" WHERE "type" IS NOT NULL LIMIT 1;'
-        stmt = f'SELECT "type" FROM "__symtable" WHERE name = {self.placeholder};'
+        stmt = f'SELECT "type" FROM {self.db_schema_prefix}"__symtable" WHERE name = {self.placeholder};'
         cursor = self._query(stmt, (viewname,))
         res = cursor.fetchone()
         return list(res.values())[0] if res else None
@@ -570,10 +572,10 @@ class SqlStorage:
         """Retrieve information about one or more viewnames"""
         if viewnames:
             placeholders = ', '.join([self.placeholder] * len(viewnames))
-            stmt = f'SELECT * FROM "__symtable" WHERE name IN ({placeholders});'
+            stmt = f'SELECT * FROM {self.db_schema_prefix}"__symtable" WHERE name IN ({placeholders});'
             values = tuple(viewnames)
         else:
-            stmt = 'SELECT * FROM "__symtable";'
+            stmt = f'SELECT * FROM {self.db_schema_prefix}"__symtable";'
             values = None
         cursor = self._query(stmt, values)
         res = cursor.fetchall()
@@ -604,7 +606,7 @@ class SqlStorage:
         """Remove view `viewname`"""
         validate_name(viewname)
         cursor = self._execute('BEGIN;')
-        self._execute(f'DROP VIEW IF EXISTS "{viewname}";', cursor)
+        self._execute(f'DROP VIEW IF EXISTS {self.db_schema_prefix}"{viewname}";', cursor)
         self._drop_name(cursor, viewname)
         self.connection.commit()
         cursor.close()
