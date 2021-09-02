@@ -149,9 +149,6 @@ class ClickhouseStorageCommon(SqlStorage):
         stmt = (f'CREATE  TABLE IF NOT EXISTS {self.db_schema_prefix}"__symtable" '
                 '(name String, type String, appdata String) ENGINE=MergeTree() primary key tuple();')
         self._execute(stmt, cursor)
-        stmt = (f'CREATE TABLE IF NOT EXISTS {self.db_schema_prefix}"__membership" '
-                '(sco_id String, var String) ENGINE=MergeTree() primary key tuple();')
-        self._execute(stmt, cursor)
         stmt = (f'CREATE TABLE IF NOT EXISTS {self.db_schema_prefix}"__queries" '
                 '(sco_id String, query_id String) ENGINE=MergeTree() primary key tuple();')
         self._execute(stmt, cursor)
@@ -348,35 +345,13 @@ class ClickhouseStorageCommon(SqlStorage):
 
         # Need to convert viewname from identifier to string, so use single quotes
         namestr = f"'{viewname}'"
-        cursor = self.connection.cursor()
-
-        # If we're reassigning an existing viewname, we need to drop old membership
-        old_type = None
-        if viewname in self.views():
-            old_type = self.table_type(viewname)
-            stmt = f'ALTER TABLE {self.db_schema_prefix}__membership DELETE WHERE var = {namestr};'
-            cursor = self._execute(stmt, cursor)
-
-        if tablename in self.tables():
-            select = (f'SELECT "id", {namestr} FROM'
-                      f' (SELECT s.id, q.query_id FROM {self.db_schema_prefix}"{sco_type}" AS s'
-                      f'  INNER JOIN {self.db_schema_prefix}__queries AS q ON s.id = q.sco_id'
-                      f'  WHERE {where}) AS foo;')
-
-            # Insert into membership table
-            stmt = f'INSERT INTO {self.db_schema_prefix}__membership ("sco_id", "var") ' + select
-            cursor = self._execute(stmt, cursor)
-
-        # Create query for the view
         select = (f'SELECT * FROM {self.db_schema_prefix}"{sco_type}" WHERE "id" IN'
-                  f' (SELECT "sco_id" FROM {self.db_schema_prefix}__membership'
-                  f"  WHERE var = '{viewname}');")
+                  f' (SELECT "{sco_type}".id FROM {self.db_schema_prefix}"{sco_type}"'
+                  f'  INNER JOIN {self.db_schema_prefix}__queries ON "{sco_type}".id = __queries.sco_id'
+                  f'  WHERE {where});')
 
-        try:
-            self._create_view(viewname, select, sco_type, deps=[tablename], cursor=cursor)
-        except IncompatibleType as incompType:
-            raise IncompatibleType((f'{viewname} has type "{old_type}";'
-                                    f' cannot assign type "{sco_type}"')) from incompType
+        cursor = self._create_view(viewname, select, sco_type, deps=[tablename], cursor=None)
+        cursor.close()
 
     def upsert(self, cursor, tablename, obj, query_id, schema):
         colnames = list(schema.keys())
