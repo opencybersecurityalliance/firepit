@@ -570,3 +570,15 @@ def test_three_ips(one_event_bundle, tmpdir):
     rows = results.fetchall()
     assert len(rows) == 1  # There can be only 1!!!
     assert rows[0]['value'] == '10.95.79.130'
+
+
+def test_finish(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', fake_bundle_file, defer_index=True)
+    store.finish()  # No effect with sqlite3
+    store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    urls = store.values('url:value', 'urls')
+    assert len(urls) == 14
+    assert 'http://www8.example.com/page/176' in urls
+    assert 'http://www27.example.com/page/64' not in urls
+    store.delete()

@@ -3,6 +3,7 @@ import re
 import uuid
 
 import orjson
+import ujson
 
 from firepit import raft
 from firepit.exceptions import IncompatibleType
@@ -18,20 +19,26 @@ from firepit.validate import validate_path
 
 logger = logging.getLogger(__name__)
 
-STIX_TRANSFORMS = [raft.preserve, raft.invert, raft.markroot,
-                   raft.makeid, raft.nest, raft.promote, raft.normalize]
 
-
-def _transform(ops, filename):
+def _transform(filename):
     for obj in raft.get_objects(filename, ['identity', 'observed-data']):
-        inputs = [obj]
-        for op in ops:
-            results = []
-            for i in inputs:
-                results.extend(op(i))
-            inputs = results
-        for result in results:
-            yield result
+        if obj['type'] == 'observed-data':
+            obj['x_stix'] = ujson.dumps(obj)  # raft.preserve
+            obj = raft.invert(obj)
+            obj = raft.markroot(obj)  # Also does raft.makeid now
+            observables = obj.get('objects', {})
+            # Inlined below: obj = raft.nest(obj)
+            object_refs = []
+            for obs_orig in observables.values():
+                object_refs.append(raft._resolve(obs_orig, observables))
+            obj['objects'] = object_refs
+            objs = raft.promote(obj)
+            # Inlined below: raft.normalize
+            objs = [raft.json_normalize(obj, flat_lists=False) for obj in objs]
+            for obj in objs:
+                yield obj
+        else:
+            yield obj
 
 
 def infer_type(key, value):
@@ -67,7 +74,7 @@ class SqlStorage:
         # Python-to-SQL type mapper
         self.infer_type = infer_type
 
-    def _get_writer(self, prefix):
+    def _get_writer(self, **kwargs):
         """Get a DB inserter object"""
         # This is DB-specific
         raise NotImplementedError('SqlStorage._get_writer')
@@ -234,8 +241,8 @@ class SqlStorage:
                 excluded.append(f'"{col}" = EXCLUDED."{col}"')
         return ', '.join(excluded)
 
-    def upsert(self, cursor, tablename, obj, query_id):
-        colnames = obj.keys()
+    def upsert(self, cursor, tablename, obj, query_id, schema):
+        colnames = list(schema.keys())
         excluded = self._get_excluded(colnames, tablename)
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([self.placeholder] * len(obj))
@@ -243,35 +250,54 @@ class SqlStorage:
         if 'id' in colnames:
             stmt += f' ON CONFLICT (id) DO UPDATE SET {excluded}'
         values = tuple([str(orjson.dumps(value), 'utf-8')
-                        if isinstance(value, list) else value for value in obj.values()])
+                        if isinstance(value, list) else value for value in obj])
         logger.debug('_upsert: "%s"', stmt)
         cursor.execute(stmt, values)
 
         if query_id:
             # Now add to query table as well
+            idx = colnames.index('id')
             stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
                     f' VALUES ({self.placeholder}, {self.placeholder})')
-            cursor.execute(stmt, (obj['id'], query_id))
+            cursor.execute(stmt, (obj[idx], query_id))
 
-    def upsert_many(self, cursor, tablename, objs, query_id):
+    def upsert_many(self, cursor, tablename, objs, query_id, schema):
         for obj in objs:
-            self.upsert(cursor, tablename, obj, query_id)
+            self.upsert(cursor, tablename, obj, query_id, schema)
 
-    def cache(self, query_id, bundles, batchsize=2000):
-        """Cache the result of a query"""
+    def cache(self, query_id, bundles, batchsize=2000, **kwargs):
+        """Cache the result of a query/dataset
+
+        Takes the `observed-data` SDOs from `bundles` and "flattens"
+        them, splits out SCOs by type, and inserts into a database
+        with 1 table per type.
+
+        Accepts some keyword args for runtime options, some of which
+        may depend on what database type is in use (e.g. sqlite3,
+        postgresql, ...)
+
+        Args:
+
+          query_id (str): a unique identifier for this set of bundles
+
+          bundles (list): STIX bundles (either in-memory Python objects or filename paths)
+
+          batchsize (int): number of objects to insert in 1 batch (defaults to 2000)
+
+        """
         logger.debug('Caching %s', query_id)
 
         if not isinstance(bundles, list):
             bundles = [bundles]
 
-        writer = self._get_writer(str(query_id))
+        writer = self._get_writer(**kwargs)
         splitter = SplitWriter(writer, batchsize=batchsize, query_id=str(query_id))
 
         # walk the bundles and figure out all the columns
         for bundle in bundles:
             if isinstance(bundle, str):
                 logger.debug('- Caching %s', bundle)
-            for obj in _transform(STIX_TRANSFORMS, bundle):
+            for obj in _transform(bundle):
                 splitter.write(obj)
         splitter.close()
 
@@ -302,7 +328,7 @@ class SqlStorage:
                 query_id = objects[0]['query_id']
             else:
                 query_id = str(uuid.uuid4())
-        writer = self._get_writer(query_id)
+        writer = self._get_writer(query_id=query_id)
         splitter = SplitWriter(writer, batchsize=1000, query_id=str(query_id))
 
         for obj in objects:
@@ -339,12 +365,16 @@ class SqlStorage:
         if 'id' not in objects[0]:
             # Maybe it's aggregates?  Do "copy-on-write"
             self._execute(f'DROP VIEW IF EXISTS {self.db_schema_prefix}"{viewname}"', cursor)
-            columns = {k: self.infer_type(k, v) for k, v in objects[0].items()}
-            self._create_table(viewname, columns)
-            self.upsert_many(cursor, viewname, objects, None)
+            columns = list(objects[0].keys())
+            schema = {}
+            for col in columns:
+                schema[col] = self.infer_type(col, objects[0][col])
+            self._create_table(viewname, schema)
+            records = [[obj.get(col) for col in columns] for obj in objects]
+            self.upsert_many(cursor, viewname, records, None, schema)
             viewdef = self._select(viewname)
         else:
-            writer = self._get_writer(None)
+            writer = self._get_writer()
             splitter = SplitWriter(writer, batchsize=1000, replace=True)
             sco_type = None
             for obj in objects:
@@ -368,7 +398,7 @@ class SqlStorage:
 
     def update(self, objects, query_id=None):
         """Update `objects`"""
-        writer = self._get_writer(None)
+        writer = self._get_writer()
         splitter = SplitWriter(writer, batchsize=1000, replace=True)
         for obj in objects:
             if 'type' not in obj:
@@ -604,3 +634,8 @@ class SqlStorage:
 
         self.connection.commit()
         cursor.close()
+
+    def finish(self):
+        """Do any DB-specific post-caching/insertion activity, such as indexing"""
+        # This is a DB-specific hook, but by default we'll do nothing
+        pass

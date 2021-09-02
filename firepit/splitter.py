@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from collections import OrderedDict, defaultdict
@@ -34,18 +33,26 @@ class JsonWriter:
             self.filenames[obj_type] = filename
         return self.files[obj_type]
 
+    @staticmethod
+    def infer_type(key, value):
+        return 'N/A'
+
     def new_type(self, obj_type, schema):
         self.props[obj_type] = schema
 
     def new_property(self, obj_type, prop_name, prop_type):
         self.props[obj_type][prop_name] = prop_type
 
-    def write_records(self, obj_type, records, _, replace, query_id):
+    def write_records(self, obj_type, records, schema, replace, query_id):
         if replace:
             raise Exception('"replace" not supported when writing JSON')
         fp = self._get_fp(obj_type)
-        buf = '\n'.join([str(orjson.dumps(rec), 'utf-8') for rec in records])
-        fp.write('{}\n'.format(buf))
+        #buf = '\n'.join([str(orjson.dumps(rec), 'utf-8') for rec in records]) + '\n'
+        #fp.write('{}\n'.format(buf))
+        for record in records:
+            obj = OrderedDict(zip(schema.keys(), record))
+            buf = str(orjson.dumps(obj), 'utf-8')
+            fp.write(buf)
 
     def types(self):
         return list(self.files.keys())
@@ -66,7 +73,8 @@ class SqlWriter:
 
     def __init__(self, filedir, store, prefix='',
                  placeholder='?',
-                 infer_type=None):
+                 infer_type=None,
+                 **kwargs):
         self.filedir = filedir
         self.store = store
         if prefix and not prefix.endswith('_'):
@@ -76,23 +84,13 @@ class SqlWriter:
         self.placeholder = placeholder
         self.infer_type = infer_type
         self.schemas = defaultdict(OrderedDict)
+        self.kwargs = kwargs
 
     def _execute(self, stmt, cursor=None):
         return self.store._execute(stmt, cursor)
 
-    def _insert(self, cursor, tablename, obj):
-        # We will see "duplicate" identity objects (e.g. same identity in multiple bundles)
-        colnames = obj.keys()
-        valnames = ', '.join([f'"{x}"' for x in colnames])
-        placeholders = ', '.join([self.placeholder] * len(obj))
-        stmt = f'INSERT INTO {self.store.db_schema_prefix}"{tablename}" ({valnames}) VALUES ({placeholders}) ON CONFLICT DO NOTHING;'
-        values = tuple([str(orjson.dumps(value), 'utf-8')
-                        if isinstance(value, list) else value for value in obj.values()])
-        #logger.debug('_insert: "%s"', stmt)
-        cursor.execute(stmt, values)
-
-    def _replace(self, cursor, tablename, obj):
-        colnames = obj.keys()
+    def _replace(self, cursor, tablename, obj, schema):
+        colnames = schema.keys()
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([self.placeholder] * len(obj))
         stmt = f'INSERT INTO {self.store.db_schema_prefix}"{tablename}" ({valnames}) VALUES ({placeholders}) ON CONFLICT (id) DO '
@@ -100,7 +98,7 @@ class SqlWriter:
         valnames = ', '.join(valnames)
         stmt += f'UPDATE SET {valnames};'
         tmp = [str(orjson.dumps(value), 'utf-8')
-               if isinstance(value, list) else value for value in obj.values()]
+               if isinstance(value, list) else value for value in obj]
         values = tuple(tmp)
         logger.debug('_replace: "%s" values %s', stmt, values)
         cursor.execute(stmt, values)
@@ -113,16 +111,17 @@ class SqlWriter:
         tablename = f'{self.prefix}{obj_type}'
         self.store._add_column(tablename, prop_name, prop_type)
 
-    def write_records(self, obj_type, records, _, replace, query_id):
+    def write_records(self, obj_type, records, schema, replace, query_id):
         tablename = f'{self.prefix}{obj_type}'
         try:
             cursor = self.store.connection.cursor()
             cursor.execute('BEGIN')
             if replace:
                 for obj in records:
-                    self._replace(cursor, tablename, obj)
+                    self._replace(cursor, tablename, obj, schema)
             else:
-                self.store.upsert_many(cursor, tablename, records, query_id)
+                kwargs = {k: v for k, v in self.kwargs.items() if k is not 'query_id'}
+                self.store.upsert_many(cursor, tablename, records, query_id, schema, **kwargs)
             cursor.execute('COMMIT')
         finally:
             cursor.close()
@@ -175,14 +174,18 @@ class SplitWriter:
         if not schema:
             schema = {}
             add_table = True
-        obj = {key: val for key, val in obj.items() if len(key) <= 63}
+        new_obj = {}
         for key, value in obj.items():
+            if len(key) > 63:
+                continue
+            new_obj[key] = value
             if key not in schema:
                 if not add_table:
                     add_col = True
                 col_type = self.writer.infer_type(key, value)
                 schema[key] = col_type
                 new_columns[key] = col_type
+        obj = new_obj
         if add_table:
             self.schemas[obj_type] = schema
             try:
@@ -196,8 +199,10 @@ class SplitWriter:
                     add_col = True
         if add_col:
             for col, col_type in new_columns.items():
+                for rec in self.records[obj_type]:
+                    rec.append(None)
                 self.writer.new_property(obj_type, col, col_type)
-        self.records[obj_type].append(obj)
+        self.records[obj_type].append([obj.get(col) for col in schema.keys()])
         if len(self.records[obj_type]) % self.batchsize == 0:
             self.writer.write_records(obj_type, self.records[obj_type], schema, self.replace, self.query_id)
             self.records[obj_type] = []
@@ -226,9 +231,9 @@ if __name__ == '__main__':
     if args.format == 'json':
         writer = JsonWriter(args.directory)
     elif args.format in ['sql', 'sqlite', 'sqlite3']:
-        import sqlite3
-        conn = sqlite3.connect(args.dbname)
-        writer = SqlWriter(args.directory, conn, prefix=args.prefix)
+        from sqlitestorage import SQLiteStorage
+        store = SQLiteStorage(args.dbname)
+        writer = store._get_writer('temp')  # SqlWriter(args.directory, store, prefix=args.prefix)
     else:
         raise NotImplementedError(args.format)
 

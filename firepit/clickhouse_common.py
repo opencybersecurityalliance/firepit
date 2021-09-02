@@ -4,6 +4,7 @@ import re
 import orjson
 
 from firepit.exceptions import IncompatibleType
+from firepit.exceptions import InvalidAttr
 from firepit.exceptions import StixPatternError
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
@@ -61,16 +62,24 @@ class CursorWrapper():
                 value =  query_values[index]
                 if value is None:
                     query_text = query_text.replace("?","Null",1)
+                    index = index+1
                     continue
                 if isinstance(value, str):
                     value=f"'{value}'"
-                query_text = query_text.replace("?",value,1)
+                query_text = query_text.replace("?","%s"%value,1)
 
                 index = index+1
             try:
                 self.cursor.execute(query_text)
-            except:
+            except Exception as e:
+                print(e)
+                if str(e).find('There\'s no column')>=0:
+                    raise InvalidAttr(str(e).replace('There\'s no column','invalid attribute')) from e
+                elif str(e).find('Missing columns')>=0:
+                    raise InvalidAttr(str(e).replace('Missing columns','invalid attribute')) from e
                 logger.error("Error excecuting query %s",query_text)
+                print("Error excecuting query %s"%query_text)
+
 
     def fetchall(self):
         convertedResult = []
@@ -148,7 +157,7 @@ class ClickhouseStorageCommon(SqlStorage):
         self._execute(stmt, cursor)
         cursor.close()
 
-    def _get_writer(self, prefix):
+    def _get_writer(self, **kwargs):
         """Get a DB inserter object"""
         filedir = os.path.dirname(self.dbname)
         return SqlWriter(
@@ -163,6 +172,10 @@ class ClickhouseStorageCommon(SqlStorage):
             self.connection.close()
         except Exception:
             pass
+
+    def _drop_name(self, cursor, name):
+        stmt = f'ALTER TABLE {self.db_schema_prefix}"__symtable" DELETE WHERE name = {self.placeholder};'
+        cursor.execute(stmt, (name,))
 
     def rename_view(self, oldname, newname):
         """Rename view `oldname` to `newname`"""
@@ -240,7 +253,6 @@ class ClickhouseStorageCommon(SqlStorage):
             cursor = self._execute(f'CREATE OR REPLACE VIEW {self.db_schema_prefix}"{viewname}" AS {select}', cursor)
         except Exception:
             #Ignore failure to create View
-            #traceback.print_stack()
             return self.connection.cursor()
         self._new_name(cursor, viewname, sco_type)
         return cursor
@@ -256,6 +268,14 @@ class ClickhouseStorageCommon(SqlStorage):
         # so we need to strip out everything but the select part
         return re.sub(r'^.*?FROM', 'SELECT * FROM', stmt, 1, re.DOTALL)
 
+    def _is_sql_view(self, name, cursor=None):
+        cursor = self._query("SELECT create_table_query"
+                             " FROM system.tables"
+                             f" WHERE database = {self.placeholder}"
+                             f" AND name = {self.placeholder}",(self.session_id, name))
+        viewdef = cursor.fetchone()
+        return viewdef is not None
+
     def tables(self):
         cursor = self._query("SELECT name"
                              " FROM system.tables"
@@ -263,6 +283,17 @@ class ClickhouseStorageCommon(SqlStorage):
         rows = cursor.fetchall()
         return [i['name'] for i in rows
                 if not i['name'].startswith('__')]
+
+
+    def types(self):
+        stmt = ("SELECT name AS table_name FROM system.tables"
+                f" WHERE database = {self.placeholder} AND engine != 'View'"
+                f" AND table_name NOT IN( SELECT name as table_name FROM {self.db_schema_prefix}__symtable)")
+        cursor = self._query(stmt, (self.session_id, ))
+        rows = cursor.fetchall()
+        # Ignore names that start with 1 or 2 underscores
+        return [i['table_name'] for i in rows
+                if not i['table_name'].startswith('_')]
 
     def views(self):
         cursor = self._query("SELECT name"
@@ -347,11 +378,30 @@ class ClickhouseStorageCommon(SqlStorage):
             raise IncompatibleType((f'{viewname} has type "{old_type}";'
                                     f' cannot assign type "{sco_type}"')) from incompType
 
-    def upsert_many(self, cursor, tablename, objs, query_id):
-        cols = set()
-        for obj in objs:
-            cols = cols.union(obj.keys())
-        colnames = list(cols)
+    def upsert(self, cursor, tablename, obj, query_id, schema):
+        colnames = list(schema.keys())
+        excluded = self._get_excluded(colnames, tablename)
+        valnames = ', '.join([f'"{x}"' for x in colnames])
+        placeholders = ', '.join([self.placeholder] * len(obj))
+        stmt = f'INSERT INTO {self.db_schema_prefix}"{tablename}" ({valnames}) VALUES ({placeholders})'
+        #if 'id' in colnames:
+        #    stmt += f' ON CONFLICT (id) DO UPDATE SET {excluded}'
+        values = tuple([str(orjson.dumps(value), 'utf-8')
+                        if isinstance(value, list) else value for value in obj])
+        logger.debug('_upsert: "%s"', stmt)
+        cursor.execute(stmt, values)
+
+        if query_id:
+            # Now add to query table as well
+            idx = colnames.index('id')
+            print(colnames)
+            print(obj)
+            stmt = (f'INSERT INTO {self.db_schema_prefix}"__queries" (sco_id, query_id)'
+                    f' VALUES ({self.placeholder}, {self.placeholder})')
+            cursor.execute(stmt, (obj[idx], query_id))
+
+    def upsert_many(self, cursor, tablename, objs, query_id, schema):
+        colnames = list(schema.keys())
         if tablename == 'identity':
             action = 'NOTHING'
         else:
@@ -371,15 +421,15 @@ class ClickhouseStorageCommon(SqlStorage):
                 queryValuesString="%s,"%queryValuesString
 
             valuesString="%s ("%valuesString
-            query_values.append(obj['id'])
+            query_values.append(schema['id'])
             query_values.append(query_id)
-            queryValuesString = "%s ('%s','%s')"%(queryValuesString,obj['id'],query_id)
+            queryValuesString = "%s ('%s','%s')"%(queryValuesString,obj[colnames.index('id')],query_id)
 
             entry =""
             for c in colnames:
                 if len(entry)>0:
                     entry="%s,"%entry
-                value = obj.get(c, None)
+                value = obj[colnames.index(c)]
                 if isinstance(value, (list, str)):
                     entry="%s '%s'"%(entry,str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
                 elif value is None:
@@ -388,8 +438,6 @@ class ClickhouseStorageCommon(SqlStorage):
                     entry="%s %s"%(entry,value)
                 values.append(str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value)
             valuesString="%s %s)"%(valuesString,entry)
-
-
 
         stmt = (f'INSERT INTO {self.db_schema_prefix}"{tablename}" ({valnames}) VALUES {valuesString}')
         logger.debug('upsert_many: count=%d table=%s columns=%s action=%s"',
