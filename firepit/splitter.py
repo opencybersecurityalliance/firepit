@@ -233,7 +233,7 @@ if __name__ == '__main__':
     elif args.format in ['sql', 'sqlite', 'sqlite3']:
         from sqlitestorage import SQLiteStorage
         store = SQLiteStorage(args.dbname)
-        writer = store._get_writer('temp')  # SqlWriter(args.directory, store, prefix=args.prefix)
+        writer = store._get_writer()  # SqlWriter(args.directory, store, prefix=args.prefix)
     else:
         raise NotImplementedError(args.format)
 

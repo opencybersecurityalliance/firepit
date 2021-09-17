@@ -33,31 +33,45 @@ def primary_prop(sco_type):
 def auto_agg(sco_type, prop, col_type):
     """Infer an aggregation function based on column name and type"""
 
+    agg = auto_agg_tuple(sco_type, prop, col_type)
+    if not agg:
+        return None
+
+    func, col, alias = agg
+
+    if len(alias) > 63:
+        # PostgreSQL has a limit of 63 chars per identifier
+        return None
+
+    # Special case for NUNIQUE (which is not SQL)
+    if func == 'NUNIQUE':
+        return f'COUNT(DISTINCT "{col}") AS "{alias}"'
+    return f'{func}("{col}") AS "{alias}"'
+
+
+def auto_agg_tuple(sco_type, prop, col_type):
+    """Infer an aggregation function based on column name and type"""
     # Don't aggregate certain columns; ignore them
     last = get_last(prop)
     if last in ['x_root', 'x_contained_by_ref', 'type', 'id']:
         return None
 
     if prop == 'number_observed':
-        return 'SUM("number_observed") AS "number_observed"'
+        return ('SUM', prop, prop)
     elif prop in ['first_observed', 'start']:
-        return f'MIN("{prop}") AS "{prop}"'
+        return ('MIN', prop, prop)
     elif prop in ['last_observed', 'end']:
-        return f'MAX("{prop}") AS "{prop}"'
+        return ('MAX', prop, prop)
 
     if ((sco_type == 'network-traffic' and prop.endswith('_port'))
         or (sco_type == 'process' and prop.endswith('pid'))):
-        agg = f'COUNT(DISTINCT "{prop}")'
-        alias = f'"unique_{prop}"'
+        func = 'NUNIQUE'
+        alias = f'unique_{prop}'
     elif col_type.lower() in ['integer', 'bigint']:
-        agg = f'AVG("{prop}")'
-        alias = f'"mean_{prop}"'
+        func = 'AVG'
+        alias = f'mean_{prop}'
     else:
-        agg = f'COUNT(DISTINCT "{prop}")'
-        alias = f'"unique_{prop}"'
+        func = 'NUNIQUE'
+        alias = f'unique_{prop}'
 
-    if len(alias) > 63:
-        # PostgreSQL has a limit of 63 chars per identifier
-        return None
-
-    return f'{agg} AS {alias}'
+    return (func, prop, alias)

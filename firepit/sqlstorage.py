@@ -11,7 +11,11 @@ from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidObject
 from firepit.exceptions import StixPatternError
 from firepit.props import auto_agg
+from firepit.props import auto_agg_tuple
 from firepit.props import primary_prop
+from firepit.query import Aggregation
+from firepit.query import Group
+from firepit.query import Table
 from firepit.splitter import SplitWriter
 from firepit.stix20 import stix2sql
 from firepit.validate import validate_name
@@ -637,3 +641,42 @@ class SqlStorage:
         """Do any DB-specific post-caching/insertion activity, such as indexing"""
         # This is a DB-specific hook, but by default we'll do nothing
         pass
+
+    def assign_query(self, viewname, query):
+        """
+        Create a new view `viewname` defined by `query`
+        """
+        # Deduce SCO type and "deps" of viewname from query
+        deps = []
+        sco_type = ''  # TODO: what to use for unknown type?
+        group_cols = []
+        found_agg = False
+        for stage in query.stages:
+            if isinstance(stage, Table):
+                # Assume first Table?  Might not work for complex queries or joins
+                on = stage.name
+                sco_type = self.table_type(on)
+                deps = [on]
+            elif isinstance(stage, Aggregation):
+                found_agg = True
+            elif isinstance(stage, Group):
+                group_cols = stage.cols
+
+        # if no aggs supplied, do "auto aggregation"
+        if group_cols and not found_agg and sco_type:
+            aggs = []
+            for col in self.schema(sco_type):  #viewname):
+                # Don't aggregate the columns we used for grouping
+                if col['name'] in group_cols:
+                    continue
+                agg = auto_agg_tuple(sco_type, col['name'], col['type'])
+                if agg:
+                    aggs.append(agg)
+            query.append(Aggregation(aggs))
+
+        query_text, query_values = query.render('{}')
+        stmt = query_text.format(query_values)
+        logger.debug('assign_query: %s', stmt)
+        cursor = self._create_view(viewname, stmt, sco_type, deps=deps)
+        self.connection.commit()
+        cursor.close()

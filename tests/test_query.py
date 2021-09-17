@@ -54,6 +54,7 @@ def test_predicate_nulls(lhs, op, rhs, expected_text):
         ('foo', 'asdf', 99),
         ('bar', 6, 99),
         ('baz', 'UNLIKE', '%blah%'),
+        ('baz', '<', None),
     ]
 )
 def test_bad_comp_op(lhs, op, rhs):
@@ -148,6 +149,18 @@ def test_filter_list():
     query.append(where)
     qtext, values = query.render('%s')
     assert qtext == r'SELECT * FROM "my_table" WHERE ("foo" LIKE %s)'
+    assert len(values) == 1
+    assert values[0] == r'%bar%'
+
+
+def test_filter_list_not_like():
+    query = Query()
+    query.append(Table('my_table'))
+    p1 = Predicate('foo[*]', '!=', 'bar')
+    where = Filter([p1])
+    query.append(where)
+    qtext, values = query.render('%s')
+    assert qtext == r'SELECT * FROM "my_table" WHERE ("foo" NOT LIKE %s)'
     assert len(values) == 1
     assert values[0] == r'%bar%'
 
@@ -366,3 +379,35 @@ def test_join_without_table():
     query = Query()
     with pytest.raises(InvalidQuery):
         query.append(Join('right_table', 'left_col', '=', 'right_col'))
+
+
+def test_implicit_table():
+    query = Query('my_table')
+    qtext, values = query.render('%s')
+    assert qtext == 'SELECT * FROM "my_table"'
+
+    query.append(Projection(['foo', 'bar', 'baz']))
+    query.append(Order(['foo']))
+    qtext, values = query.render('%s')
+    assert qtext == 'SELECT "foo", "bar", "baz" FROM "my_table" ORDER BY "foo" ASC'
+
+
+def test_query_init_list():
+    query = Query([Table('my_table'), Projection(['foo', 'bar', 'baz'])])
+    qtext, values = query.render('%s')
+    assert qtext == 'SELECT "foo", "bar", "baz" FROM "my_table"'
+
+
+def test_init_list_join_filter():
+    # Same as test_join_filter but using init list
+    query = Query([
+        Table('left_table'),
+        Join('right_table', 'left_col', '=', 'right_col'),
+        Filter([Predicate('foo', '=', 'bar')]),
+        Projection(['baz']),
+        Unique(),
+    ])
+    qtext, values = query.render('%s')
+    assert qtext == 'SELECT DISTINCT "baz" FROM "left_table" INNER JOIN "right_table" ON "left_table"."left_col" = "right_table"."right_col" WHERE ("foo" = %s)'
+    assert len(values) == 1
+    assert values[0] == 'bar'
