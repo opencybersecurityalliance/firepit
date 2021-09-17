@@ -6,7 +6,7 @@ from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidStixPath
 from firepit.exceptions import InvalidViewname
 from firepit.exceptions import StixPatternError
-from firepit.exceptions import UnknownError
+from firepit.exceptions import UnexpectedError
 from firepit.query import Filter
 from firepit.query import Group
 from firepit.query import Predicate
@@ -185,7 +185,7 @@ def test_assign_query_sqli(fake_bundle_file, tmpdir):
         Table('url'),
         Filter([Predicate('value', '=', '1; select * from url; --')])
     ])
-    with pytest.raises(UnknownError):
+    with pytest.raises(UnexpectedError):
         store.assign_query('urls', query)
 
 

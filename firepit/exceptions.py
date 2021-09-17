@@ -42,5 +42,5 @@ class DuplicateTable(Exception):
     pass
 
 
-class UnknownError(Exception):
+class UnexpectedError(Exception):
     pass

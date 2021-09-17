@@ -6,7 +6,7 @@ import sqlite3
 
 from firepit.exceptions import DuplicateTable
 from firepit.exceptions import InvalidAttr
-from firepit.exceptions import UnknownError
+from firepit.exceptions import UnexpectedError
 from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
@@ -82,7 +82,7 @@ class SQLiteStorage(SqlStorage):
                 raise UnknownViewname(e.args[0]) from e
             elif e.args[0].endswith("syntax error"):
                 # We see this on SQL injection attempts
-                raise UnknownError(e.args[0]) from e
+                raise UnexpectedError(e.args[0]) from e
             else:
                 raise e  # See if caller wants special behavior
         return cursor

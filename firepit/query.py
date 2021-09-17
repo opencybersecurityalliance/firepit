@@ -171,7 +171,7 @@ class Aggregation:
                     alias = None
                 if func.upper() not in AGG_FUNCS:
                     raise InvalidAggregateFunction(func)
-                if col is not None:
+                if col is not None and col != '*':
                     validate_path(col)
                 self.aggs.append((func, col, alias))
             else:
