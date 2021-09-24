@@ -163,7 +163,7 @@ def test_sort_bad_limit(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])
     store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         store.assign('sorted', 'urls', op='sort', by='value', limit='1; SELECT 1; --')
 
 

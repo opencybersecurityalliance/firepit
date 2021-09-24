@@ -12,11 +12,20 @@ from firepit.exceptions import InvalidObject
 from firepit.exceptions import StixPatternError
 from firepit.props import auto_agg
 from firepit.props import auto_agg_tuple
+from firepit.props import parse_path
 from firepit.props import primary_prop
+from firepit.props import ref_type
 from firepit.query import Aggregation
+from firepit.query import Column
 from firepit.query import Group
+from firepit.query import Join
+from firepit.query import Limit
+from firepit.query import Order
+from firepit.query import Projection
+from firepit.query import Query
 from firepit.query import Table
 from firepit.splitter import SplitWriter
+from firepit.stix20 import path2sql
 from firepit.stix20 import stix2sql
 from firepit.validate import validate_name
 from firepit.validate import validate_path
@@ -27,17 +36,18 @@ logger = logging.getLogger(__name__)
 def _transform(filename):
     for obj in raft.get_objects(filename, ['identity', 'observed-data']):
         if obj['type'] == 'observed-data':
-            obj['x_stix'] = ujson.dumps(obj)  # raft.preserve
-            obj = raft.invert(obj)
-            obj = raft.markroot(obj)  # Also does raft.makeid now
-            observables = obj.get('objects', {})
-            # Inlined below: obj = raft.nest(obj)
-            object_refs = []
-            for obs_orig in observables.values():
-                object_refs.append(raft._resolve(obs_orig, observables))
-            obj['objects'] = object_refs
-            objs = raft.promote(obj)
+            # obj['x_stix'] = ujson.dumps(obj)  # raft.preserve
+            # obj = raft.invert(obj)
+            # obj = raft.markroot(obj)  # Also does raft.makeid now
+            # observables = obj.get('objects', {})
+            # # Inlined below: obj = raft.nest(obj)
+            # object_refs = []
+            # for obs_orig in observables.values():
+            #     object_refs.append(raft._resolve(obs_orig, observables))
+            # obj['objects'] = object_refs
+            # objs = raft.promote(obj)
             # Inlined below: raft.normalize
+            objs = raft.make_sro(obj)
             objs = [raft.json_normalize(obj, flat_lists=False) for obj in objs]
             for obj in objs:
                 yield obj
@@ -308,18 +318,35 @@ class SqlStorage:
         Perform (unary) operation `op` on `on` and store result as `viewname`
         """
         validate_name(viewname)
+        validate_name(on)
+        query = Query(on)
         if by:
             validate_path(by)
-            _, _, by = by.rpartition(':')
+            sco_type, _, by = by.rpartition(':')
+            target_table = on
+            target_column = by
+            for link in parse_path(by):
+                if link[0] == 'node':
+                    target_table = link[1]
+                    target_column = link[2]
+                elif link[0] == 'rel':
+                    from_type = link[1] or on  # FIXME
+                    ref_name = link[2]
+                    to_type = link[3]
+                    query.append(Join(to_type, ref_name, '=', 'id'))
         if op == 'sort':
-            stmt = self._select(
-                on, sortby=by, ascending=ascending, limit=limit)
+            #stmt = self._select(
+            #    on, sortby=by, ascending=ascending, limit=limit, where=where)
+            query.append(Order([(target_column, Order.ASC if ascending else Order.DESC)]))
+            if limit:
+                query.append(Limit(limit))
+            #query.append(Projection(self.columns(on)))  # Is this necessary?
+            cols = [Column(c, table=on) for c in self.columns(on)]
+            query.append(Projection(cols))  # Is this necessary?
         elif op == 'group':
-            stmt = self._select(on, groupby=by)
-        sco_type = self.table_type(on)
-        cursor = self._create_view(viewname, stmt, sco_type, deps=[on])
-        self.connection.commit()
-        cursor.close()
+            #stmt = self._select(on, groupby=by, where=where)
+            query.append(Group([Column(target_column, alias=by)]))
+        self.assign_query(viewname, query)
 
     def load(self, viewname, objects, sco_type=None, query_id=None, preserve_ids=True):
         """Import `objects` as type `sco_type` and store as `viewname`"""
@@ -490,10 +517,38 @@ class SqlStorage:
         """Get the values of STIX object path `path` (a column) from `viewname`"""
         validate_path(path)
         validate_name(viewname)
-        _, _, column = path.rpartition(':')
+        sco_type, _, column = path.rpartition(':')
+        print(f'PC: columns({viewname}):', self.columns(viewname))
         if column not in self.columns(viewname):
-            raise InvalidAttr(path)
-        stmt = f'SELECT "{column}" FROM "{viewname}"'
+            #raise InvalidAttr(path)
+            #? clause = path2sql(column)
+            if not sco_type:
+                sco_type = self.table_type(viewname)
+            links = parse_path(column)
+            joins = ''
+            target_table = column
+            target_column = column
+            for link in links:
+                print(link)
+                if link[0] == 'node':
+                    #result = _convert_op(sco_type, link[2], op, value)
+                    target_table = link[1] or viewname
+                    target_column = link[2]
+                elif link[0] == 'rel':
+                    from_type = link[1] or viewname  # FIXME
+                    ref_name = link[2]
+                    to_type = link[3]
+                    joins += f' JOIN "{to_type}" ON "{from_type}"."{ref_name}" = "{to_type}".id'
+            stmt = f'SELECT "{target_table}"."{target_column}" AS "{column}" FROM "{viewname}" {joins}'
+            #types = set(ref_type(sco_type, column))
+            #all_tables = set(self.tables())
+            #join_tables = [f'"{t}"' for t in list(types & all_tables)]
+            #stmt = f'SELECT "{column}" FROM "{viewname}" JOIN '
+            #stmt += ', '.join(join_tables)
+            #for table in join_tables:
+            #    stmt += f' ON "{viewname}"."column" = {table}.id'
+        else:
+            stmt = f'SELECT "{column}" FROM "{viewname}"'
         cursor = self._query(stmt)
         result = cursor.fetchall()
         return [row[column] for row in result]
@@ -650,8 +705,9 @@ class SqlStorage:
         deps = []
         sco_type = ''  # TODO: what to use for unknown type?
         group_cols = []
+        group_pos = None
         found_agg = False
-        for stage in query.stages:
+        for i, stage in enumerate(query.stages):
             if isinstance(stage, Table):
                 # Assume first Table?  Might not work for complex queries or joins
                 on = stage.name
@@ -661,6 +717,7 @@ class SqlStorage:
                 found_agg = True
             elif isinstance(stage, Group):
                 group_cols = stage.cols
+                group_pos = i
 
         # if no aggs supplied, do "auto aggregation"
         if group_cols and not found_agg and sco_type:
@@ -671,11 +728,18 @@ class SqlStorage:
                     continue
                 agg = auto_agg_tuple(sco_type, col['name'], col['type'])
                 if agg:
+                    if deps:
+                        # Probably means recursive def?  Disambiguate columns
+                        agg = (agg[0], Column(col['name'], table=deps[0]), agg[2])
                     aggs.append(agg)
-            query.append(Aggregation(aggs))
+            agg = Aggregation(aggs)
+            agg.group_cols = group_cols  #FIXME: how to alias?  Maybe table stack?
+            print('PC: agg.group_cols=', group_cols)
+            query.stages.insert(group_pos, agg)  # Nasty
 
         query_text, query_values = query.render('{}')
         stmt = query_text.format(query_values)
+        print('PC: stmt=', stmt)
         logger.debug('assign_query: %s', stmt)
         cursor = self._create_view(viewname, stmt, sco_type, deps=deps)
         self.connection.commit()

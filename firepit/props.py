@@ -56,6 +56,9 @@ def auto_agg_tuple(sco_type, prop, col_type):
     if last in ['x_root', 'x_contained_by_ref', 'type', 'id']:
         return None
 
+    #if last.endswith('_observed'):  # TEMP
+    #    return None
+
     if prop == 'number_observed':
         return ('SUM', prop, prop)
     elif prop in ['first_observed', 'start']:
@@ -75,3 +78,73 @@ def auto_agg_tuple(sco_type, prop, col_type):
         alias = f'unique_{prop}'
 
     return (func, prop, alias)
+
+
+#TODO: convert to dicts?
+def ref_type(sco_type, part):
+    if part == 'parent_ref':
+        return ['process']
+    elif part in ['dst_ref', 'dst_ip_ref', 'src_ref', 'src_ip_ref']:
+        return ['ipv4-addr', 'ipv6-addr']
+    elif sco_type in ['ipv4-addr', 'ipv6-addr'] and part == 'resolves_to_refs':
+        return ['mac-addr']
+    elif part == 'binary_ref':
+        return ['file']
+    elif part == 'parent_directory_ref':
+        return ['directory']
+    elif part == 'creator_user_ref':
+        return ['user-account']
+    elif part in ['dst_os_ref', 'src_os_ref',
+                  'dst_application_ref', 'src_application_ref']:  # x-ibm-finding
+        return ['software']
+    elif part == ['ip_refs']:  # x-oca-asset, x-oca-event, x-oca-pod-ext
+        return ['ipv4-addr', 'ipv6-addr']
+    elif part == ['mac_refs']:  # x-oca-asset
+        return ['mac-addr']
+    elif sco_type == 'x-oca-event':
+        if part == 'original_ref':
+            return ['artifact']
+        elif part == 'host_ref':
+            return ['x-oca-asset']
+        elif part == 'url_ref':
+            return ['url']
+        elif part == 'file_ref':
+            return ['file']
+        elif 'process' in part:
+            return ['process']
+        elif part == 'domain_ref':
+            return ['domain-name']
+        elif part == 'registry_ref':
+            return ['windows-registry-key']
+        elif part == 'network_ref':
+            return ['network-traffic']
+        elif part == 'user_ref':
+            return ['user-account']
+    elif sco_type == 'x-ibm-finding':
+        if part.endswith('_user_ref'):
+            return ['user-account']
+
+    # TODO: hueristics/classifier to guess?
+    raise NotImplementedError(f'{sco_type}:{part}')  # TEMP
+
+
+def is_ref(name):
+    return name.endswith('_ref') \
+        or name.endswith('_refs')
+
+
+def parse_path(path):
+    sco_type, _, prop = path.rpartition(':')
+    parts = prop.split('.')
+    result = []
+    for part in parts:
+        if not is_ref(part):
+            result.append(('node', sco_type, part))
+        else:
+            cur_type = sco_type
+            sco_type = ref_type(cur_type, part)
+            if isinstance(sco_type, list):
+                sco_type = sco_type[0]  # FIXME: How should we handle lists?
+            result.append(('rel', cur_type, part, sco_type))
+
+    return result

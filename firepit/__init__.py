@@ -10,10 +10,12 @@ from urllib.parse import urlparse
 
 from firepit.validate import validate_name
 
+import re
 
 def get_storage(url, session_id=None):
     if session_id:
         validate_name(session_id)
+    url = re.sub(r'^.*postgresql://', 'postgresql://', url)
     url = urlparse(url)
     if url.scheme == 'postgresql':
         module = import_module('firepit.pgstorage')

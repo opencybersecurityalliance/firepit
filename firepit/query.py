@@ -11,6 +11,17 @@ JOIN_TYPES = ['INNER', 'OUTER', 'LEFT OUTER', 'CROSS']
 AGG_FUNCS = ['COUNT', 'SUM', 'MIN', 'MAX', 'AVG', 'NUNIQUE']
 
 
+def _validate_column(col):
+    if isinstance(col, str):
+        validate_path(col)
+    elif isinstance(col, Column):
+        validate_path(col.name)
+        if col.table:
+            validate_name(col.table)
+        if col.alias:
+            validate_path(col.alias)
+
+
 class InvalidComparisonOperator(Exception):
     pass
 
@@ -29,6 +40,25 @@ class InvalidAggregateFunction(Exception):
 
 class InvalidQuery(Exception):
     pass
+
+
+class Column:
+    """SQL Column name"""
+
+    def __init__(self, name, table=None, alias=None):
+        self.name = name
+        self.table = table
+        self.alias = alias
+
+    def __str__(self):
+        # This is extremely hacky and gross
+        if self.table:
+            result = f'{self.table}"."{self.name}'
+        else:
+            result = self.name
+        if self.alias:
+            result = f'{result}" AS "{self.alias}'
+        return result
 
 
 class Predicate:
@@ -124,10 +154,10 @@ class Order:
 
 class Projection:
     """SQL SELECT (really projection - pick column subset) clause"""
-
+    #FIXME: need be to able to prefix cols with table in case of joins
     def __init__(self, cols):
         for col in cols:
-            validate_path(col)
+            _validate_column(col)
         self.cols = cols
 
     def render(self, placeholder):
@@ -150,11 +180,20 @@ class Group:
 
     def __init__(self, cols):
         for col in cols:
-            validate_path(col)
+            _validate_column(col)
         self.cols = cols
 
     def render(self, placeholder):
-        return ', '.join([f'"{col}"' for col in self.cols])
+        cols = []
+        for col in self.cols:
+            if isinstance(col, Column):  # Again, nasty hacks
+                if col.table:
+                    cols.append(f'{col.table}"."{col.name}')
+                else:
+                    cols.append(col.name)
+            else:
+                cols.append(col)
+        return ', '.join([f'"{col}"' for col in cols])
 
 
 class Aggregation:
@@ -172,7 +211,7 @@ class Aggregation:
                 if func.upper() not in AGG_FUNCS:
                     raise InvalidAggregateFunction(func)
                 if col is not None and col != '*':
-                    validate_path(col)
+                    _validate_column(col)
                 self.aggs.append((func, col, alias))
             else:
                 raise TypeError('expected aggregation tuple but received ' + str(type(agg)))
@@ -203,20 +242,20 @@ class Offset:
     """SQL row offset"""
 
     def __init__(self, num):
-        self.text = f'{num}'
+        self.num = int(num)
 
     def render(self, placeholder):
-        return self.text
+        return str(self.num)
 
 
 class Limit:
     """SQL row count"""
 
     def __init__(self, num):
-        self.text = f'{num}'
+        self.num = int(num)
 
     def render(self, placeholder):
-        return self.text
+        return str(self.num)
 
 
 class Count:
@@ -244,7 +283,7 @@ class CountUnique:
 
     def __init__(self, cols=None):
         for col in cols or []:
-            validate_path(col)
+            _validate_column(col)
         self.cols = cols
 
     def render(self, placeholder):
@@ -259,11 +298,11 @@ class Join:
 
     def __init__(self, name, left_col, op, right_col, how='INNER'):
         validate_name(name)
-        validate_path(left_col)
-        validate_path(right_col)
+        _validate_column(left_col)
+        _validate_column(right_col)
         if how.upper() not in JOIN_TYPES:
             raise InvalidJoinOperator(how)
-        self.prev_name = None
+        self.prev_name = None  # Filled in by Query
         self.name = name
         self.left_col = left_col
         self.op = op
@@ -280,6 +319,7 @@ class Join:
 class Query:
     def __init__(self, arg=None):
         self.stages = []
+        self.tables = []  # Treat like a stack
         if isinstance(arg, str):
             self.append(Table(arg))
         elif isinstance(arg, list):
@@ -302,7 +342,7 @@ class Query:
         elif isinstance(stage, Join):
             # Need to look back and grab previous table name
             last = self.last_stage()
-            if isinstance(last, (Table, Join)):
+            if isinstance(last, (Table, Join)):  #TODO: use table stack
                 stage.prev_name = last.name
             else:
                 raise InvalidQuery('Join must follow Table or Join')
@@ -324,10 +364,13 @@ class Query:
             if isinstance(last, Projection):
                 self.stages.pop(-1)
                 stage.cols = last.cols
+        elif isinstance(stage, Table):
+            self.tables.append(stage.name)
         self.stages.append(stage)
 
     def render(self, placeholder):
-        # TODO: detect missing table
+        if not self.tables:
+            raise InvalidQuery("no table")  #TODO: better message
         query = ''
         values = ()
         prev = None  # TODO: Probably need state machine here

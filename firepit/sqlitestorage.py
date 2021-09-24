@@ -66,6 +66,7 @@ class SQLiteStorage(SqlStorage):
             cursor = self.connection.cursor()
         try:
             logger.debug('Executing query: %s', query)
+            print('Executing query:', query)
             if not values:
                 cursor.execute(query)
             else:
@@ -104,6 +105,7 @@ class SQLiteStorage(SqlStorage):
         if not deps:
             deps = []
         elif viewname in deps:
+            alias = f'_{viewname}'
             is_new = False
             # Get the query that makes up the current view
             slct = self._get_view_def(viewname)
@@ -113,7 +115,9 @@ class SQLiteStorage(SqlStorage):
                 self._execute(f'ALTER TABLE "{viewname}" RENAME TO "_{viewname}"', cursor)
                 slct = slct.replace(viewname, f'_{viewname}')
             # Swap out the viewname for its definition
-            select = re.sub(f'"{viewname}"', f'({slct}) AS tmp', select)
+            #select = re.sub(f'"{viewname}"', f'({slct}) AS tmp', select)
+            select = re.sub(f'FROM "{viewname}"', f'FROM ({slct}) AS "{alias}"', select, count=1)
+            select = re.sub(f'"{viewname}"', f'"{alias}"', select)
         if self._is_sql_view(viewname, cursor):
             is_new = False
             self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)

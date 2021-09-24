@@ -4,6 +4,8 @@
 Raft: Streaming processing of STIX Observation SDOs (`observed-data`).
 """
 
+import uuid
+
 from collections import OrderedDict
 from collections import defaultdict
 
@@ -11,6 +13,9 @@ import ijson
 import orjson
 import ujson
 import requests
+
+from firepit import stix21
+
 
 INVERTED_REFS = {
     'x_child_of_ref': 'parent_ref',
@@ -81,10 +86,12 @@ def _is_custom_prop(prop):
 
 
 def _set_id(idx, obs, oid):
-    stype = obs['type']
-    uid = oid.lstrip('observed-data')
-    obs['id'] = f'{stype}--{uid}_{idx}'
-    return uid
+    #stype = obs['type']
+    #uid = oid.lstrip('observed-data')
+    #obs['id'] = f'{stype}--{uid}_{idx}'
+    sid = stix21.makeid(obs)  # TEMP
+    obs['id'] = sid
+    return sid
 
 
 def preserve(obj):
@@ -238,6 +245,129 @@ def invert(obj):
             del v[attr]
 
     return obj
+
+
+def make_sro(obs):
+    """
+    Convert ref lists to SROs
+    """
+    scos = obs['objects']
+    object_refs = []
+    ref_map = {}
+    results = [obs]
+
+    # Keep track of the preference order of each reffed object, by type
+    prefs = defaultdict(list)
+    reffed = set()
+    
+    for idx, sco in scos.items():
+        # "Inherit" some basic observed-data properties
+        for prop in ['first_observed', 'last_observed', 'number_observed']:
+            if prop in obs:
+                sco[prop] = obs[prop]
+
+        # Put SCO at end of pref list
+        prefs[sco['type']].append(idx)
+        
+        # Assign a STIX 2.1-style identifier
+        sid = _set_id(idx, sco, None)  # oid no longer needed
+        ref_map[idx] = sid
+
+        # Create SRO for ref lists
+        ref_lists = []
+        for prop, val in sco.items():
+            if prop.endswith('_ref'):
+                # markroot stuff
+                if val in scos and val != idx:  # Avoid bogus references
+                    # If an object refs another object of the same type,
+                    # only mark the root (think process:parent_ref)
+                    if scos[idx]['type'] == scos[val]['type']:
+                        _mark_tree(scos, val, reffed)
+                    elif (scos[val]['type'].endswith('-addr')):
+                        if 'dst_' in prop:
+                            # For src/dst pairs, consider the src as the root (so add dst to reffed)
+                            reffed.add(val)
+                        elif prop.endswith('src_ref'):
+                            # Save ref as the "preferred" object for this type
+                            prefs[scos[val]['type']].insert(0, val)
+                    elif val in reffed:
+                        reffed.add(idx)
+            elif prop.endswith('_refs'):
+                if not isinstance(val, list):
+                    val = [val]
+                for ref in val:
+                    #print('PC: ref=%s idx=%s' % (ref, idx))
+                    if ref in scos and ref != idx:  # Avoid bogus references
+                        # We'll replace these indices later
+                        sro = {
+                            'id': f'relationship--{uuid.uuid4()}',
+                            'type': 'relationship',
+                            'relationship_type': prop,
+                            'source_ref': idx,
+                            'target_ref': ref
+                        }
+                        results.append(sro)
+
+                        # markroot stuff
+                        if scos[idx]['type'] == scos[ref]['type']:
+                            reffed.add(ref)
+
+                # Store prop name to remove later
+                ref_lists.append(prop)
+
+        for prop in ref_lists:
+            del sco[prop]
+
+        object_refs.append(sid)
+
+        #TODO: if sco in results already, update
+        results.append(sco)
+
+        # Append pseudo-relationship for "Observtion CONTAINS SCO"
+        results.append({
+            'id': f'relationship--{uuid.uuid4()}',
+            'type': 'relationship',
+            'relationship_type': 'object_refs',
+            'source_ref': obs['id'],
+            'target_ref': sco['id']
+        })
+        
+        # calc distance?
+        # promote?
+
+    # Resolve 2.0-style refs to new style
+    for obj in results:  # Includes SDOs, SCOs, and SROs
+        #print("PC: id = %s" % obj['id'])
+        if obj['type'] == 'relationship':
+            continue
+
+        for prop, val in obj.items():
+            if prop.endswith('_ref'):
+                ref = obj[prop]
+                obj[prop] = ref_map.get(val, ref)  #FIXME: if ref not in map?
+
+        obj_type = obj['type']
+        k = None
+        for idx, sid in ref_map.items():
+            if sid == obj.get('id'):
+                k = idx
+        if k and k not in reffed:
+            # Check if there's a more preferred object
+            if obj_type not in prefs:
+                scos[k]['x_root'] = 1
+            else:
+                for i in prefs[obj_type]:
+                    if i in reffed:
+                        continue
+                    elif i == k:
+                        scos[k]['x_root'] = 1
+                    break
+                
+    #obs['object_refs'] = object_refs
+
+    del obs['objects']
+
+    return results
 
 
 def _mark_tree(objs, k, reffed):

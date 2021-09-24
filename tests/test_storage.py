@@ -9,7 +9,9 @@ from decimal import Decimal
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import UnknownViewname
 from firepit.query import Aggregation
+from firepit.query import Column
 from firepit.query import Group
+from firepit.query import Join
 from firepit.query import Limit
 from firepit.query import Query
 from firepit.query import Order
@@ -91,6 +93,7 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     store.extract('a_ips', 'ipv4-addr', 'q1', "[ipv4-addr:value LIKE '10.%']")
     a_ips = store.values('ipv4-addr:value', 'a_ips')
     print(a_ips)
+    print('nunique =', len(set(a_ips)))
     assert len(a_ips) == 100
     assert '10.0.0.141' in a_ips
 
@@ -224,6 +227,20 @@ def test_grouping(fake_bundle_file, fake_csv_file, tmpdir):
     groups = store.lookup('conns')
     assert groups
     assert 'unique_dst_port' in groups[0].keys()
+
+
+def test_grouping_dst_port(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
+    store.assign('conns', 'conns', op='group', by='dst_port')
+    srcs = store.values('dst_port', 'conns')
+    assert srcs
+
+    groups = store.lookup('conns')
+    assert groups
+    assert 'dst_port' in groups[0].keys()
 
 
 def test_extract(fake_bundle_file, tmpdir):
@@ -598,7 +615,9 @@ def test_grouping_multi_auto(fake_bundle_file, tmpdir):
     store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
     query = Query()
     query.append(Table('conns'))
-    query.append(Group(['src_ref.value']))
+    #query.append(Group(['src_ref.value']))
+    query.append(Join('ipv4-addr', 'src_ref', '=', 'id'))
+    query.append(Group([Column('value', alias='src_ref.value')]))
     store.assign_query('conns', query)
     srcs = store.values('src_ref.value', 'conns')
     assert srcs
@@ -616,14 +635,18 @@ def test_grouping_multi_agg_1(fake_bundle_file, tmpdir):
     store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port > 0]")
     query = Query([
         Table('conns'),
-        Group(['src_ref.value']),
-        Aggregation([('SUM', 'number_observed', 'total')]),
+        #Group(['src_ref.value']),
+        Join('ipv4-addr', 'src_ref', '=', 'id'),
+        Group([Column('value', alias='src_ref.value')]),
+        #Aggregation([('SUM', 'number_observed', 'total')]),
+        Aggregation([('SUM', Column('number_observed', table='conns'), 'total')]),
         Order([('total', Order.DESC)]),
         Limit(10)
     ])
     store.assign_query('grp_conns', query)
 
     groups = store.lookup('grp_conns')
+    print(groups)
     assert groups
     assert 'total' in groups[0].keys()
     assert len(groups) == 10
