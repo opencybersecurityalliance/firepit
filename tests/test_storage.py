@@ -94,22 +94,16 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     a_ips = store.values('ipv4-addr:value', 'a_ips')
     print(a_ips)
     print('nunique =', len(set(a_ips)))
-    assert len(a_ips) == 100
-    assert '10.0.0.141' in a_ips
-
-    store.extract('a_ips', 'ipv4-addr', 'q1', "[ipv4-addr:value LIKE '10.%']")
-    a_ips = store.values('ipv4-addr:value', 'a_ips')
-    print(a_ips)
-    assert len(a_ips) == 100
+    assert len(a_ips) == 10  # There are only 10 unique IPs in the bundle
     assert '10.0.0.141' in a_ips
 
     store.extract('users', 'user-account', 'q1', "[ipv4-addr:value LIKE '10.%']")
     users = store.values('user-account:account_login', 'users')
     print(users)
-    assert len(users) == 100
+    assert len(users) == 14  # There are only 14 unique usernames in the bundle
     counter = Counter(users)
-    assert counter['henry'] == 2
-    assert counter['isabel'] == 12
+    assert counter['henry'] == 1
+    assert counter['isabel'] == 1
     by = 'user-account:account_login'
     store.assign('grouped_users', 'users', op='group', by=by)
     cols = store.columns('grouped_users')
@@ -547,7 +541,7 @@ def test_port_zero(fake_bundle_file_2, tmpdir):
     store.assign('sconns', 'conns', op='sort', by='src_port')
     conns = store.lookup('sconns')
     assert conns[0]['src_port'] == 0
-    assert conns[0]['id'] == 'network-traffic--2171d844-d635-4f03-91cc-0a36f1caf3b6_2'
+    assert conns[0]['id'] == 'network-traffic--6ecfde62-7543-5fea-94bf-0e6bb30fdaff'
 
 
 def test_duplicate_identity(fake_bundle_list, tmpdir):

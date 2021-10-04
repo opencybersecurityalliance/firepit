@@ -325,15 +325,16 @@ class SqlStorage:
             sco_type, _, by = by.rpartition(':')
             target_table = on
             target_column = by
-            for link in parse_path(by):
-                if link[0] == 'node':
-                    target_table = link[1]
-                    target_column = link[2]
-                elif link[0] == 'rel':
-                    from_type = link[1] or on  # FIXME
-                    ref_name = link[2]
-                    to_type = link[3]
-                    query.append(Join(to_type, ref_name, '=', 'id'))
+            if by not in self.columns(on):
+                for link in parse_path(by):
+                    if link[0] == 'node':
+                        target_table = link[1]
+                        target_column = link[2]
+                    elif link[0] == 'rel':
+                        from_type = link[1] or on  # FIXME
+                        ref_name = link[2]
+                        to_type = link[3]
+                        query.append(Join(to_type, ref_name, '=', 'id'))
         if op == 'sort':
             #stmt = self._select(
             #    on, sortby=by, ascending=ascending, limit=limit, where=where)
@@ -721,10 +722,13 @@ class SqlStorage:
 
         # if no aggs supplied, do "auto aggregation"
         if group_cols and not found_agg and sco_type:
+            print('PC: group_cols=', group_cols)
+            group_colnames = set([c.name for c in group_cols])
             aggs = []
             for col in self.schema(sco_type):  #viewname):
+                print('PC: col=', col)
                 # Don't aggregate the columns we used for grouping
-                if col['name'] in group_cols:
+                if col['name'] in group_colnames:
                     continue
                 agg = auto_agg_tuple(sco_type, col['name'], col['type'])
                 if agg:
