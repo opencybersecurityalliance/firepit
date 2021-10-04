@@ -8,6 +8,12 @@ from decimal import Decimal
 
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import UnknownViewname
+from firepit.query import Aggregation
+from firepit.query import Group
+from firepit.query import Limit
+from firepit.query import Query
+from firepit.query import Order
+from firepit.query import Table
 
 from .helpers import tmp_storage
 
@@ -582,3 +588,72 @@ def test_finish(fake_bundle_file, tmpdir):
     assert 'http://www8.example.com/page/176' in urls
     assert 'http://www27.example.com/page/64' not in urls
     store.delete()
+
+
+def test_grouping_multi_auto(fake_bundle_file, tmpdir):
+    # Same test as test_grouping but uses assign_query instead of assign
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
+    query = Query()
+    query.append(Table('conns'))
+    query.append(Group(['src_ref.value']))
+    store.assign_query('conns', query)
+    srcs = store.values('src_ref.value', 'conns')
+    assert srcs
+
+    groups = store.lookup('conns')
+    assert groups
+    assert 'unique_dst_port' in groups[0].keys()
+
+
+def test_grouping_multi_agg_1(fake_bundle_file, tmpdir):
+    # Same test as test_grouping but uses assign_query instead of assign
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port > 0]")
+    query = Query([
+        Table('conns'),
+        Group(['src_ref.value']),
+        Aggregation([('SUM', 'number_observed', 'total')]),
+        Order([('total', Order.DESC)]),
+        Limit(10)
+    ])
+    store.assign_query('grp_conns', query)
+
+    groups = store.lookup('grp_conns')
+    assert groups
+    assert 'total' in groups[0].keys()
+    assert len(groups) == 10
+    expected = [
+        ('192.168.90.122', 6),
+        ('192.168.160.194', 4),
+        ('192.168.57.49', 4),
+        ('192.168.70.186', 4),
+        ('192.168.104.15', 3),
+        ('192.168.132.245', 3),
+        ('192.168.152.147', 3),
+        ('192.168.156.235', 3),
+        ('192.168.203.101', 3),
+        ('192.168.0.175', 2),
+    ]
+    for i, values in enumerate(expected):
+        # The order of addrs when count is a tie is not guaranteed
+        # assert groups[i]['src_ref.value'] == values[0]
+        assert groups[i]['total'] == values[1]
+
+
+def test_assign_query_1(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port > 0]")
+    query = Query([
+        Table('conns'),
+        Order([('src_ref.value', Order.DESC)]),
+    ])
+    store.assign_query('conns', query)
+    srcs = store.values('src_ref.value', 'conns')
+    assert srcs[0] > srcs[-1]

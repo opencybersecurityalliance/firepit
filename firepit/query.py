@@ -1,10 +1,14 @@
 """Utilities for generating SQL while avoiding SQL injection vulns"""
 
+from firepit.validate import validate_name
+from firepit.validate import validate_path
+
 import re
 
 COMP_OPS = ['=', '<>', '!=', '<', '>', '<=', '>=', 'LIKE', 'IN', 'IS', 'IS NOT']
 PRED_OPS = ['AND', 'OR']
-AGG_FUNCS = ['COUNT', 'SUM', 'MIN', 'MAX', 'AVG']
+JOIN_TYPES = ['INNER', 'OUTER', 'LEFT OUTER', 'CROSS']
+AGG_FUNCS = ['COUNT', 'SUM', 'MIN', 'MAX', 'AVG', 'NUNIQUE']
 
 
 class InvalidComparisonOperator(Exception):
@@ -12,6 +16,10 @@ class InvalidComparisonOperator(Exception):
 
 
 class InvalidPredicateOperator(Exception):
+    pass
+
+
+class InvalidJoinOperator(Exception):
     pass
 
 
@@ -29,6 +37,8 @@ class Predicate:
     def __init__(self, lhs, op, rhs):
         if op not in COMP_OPS:
             raise InvalidComparisonOperator(op)
+        if rhs is None:
+            rhs = 'NULL'
         if lhs.endswith('[*]'):  # STIX list property
             lhs = lhs[:-3]
             if rhs.lower() != 'null':
@@ -37,11 +47,14 @@ class Predicate:
                     op = 'LIKE'
                 elif op == '!=':
                     op = 'NOT LIKE'
+        validate_path(lhs)
         self.lhs = lhs
         self.op = op
         self.rhs = rhs
         if self.rhs in ['null', 'NULL']:
             self.values = ()
+            if op not in ['=', '!=', '<>', 'IS', 'IS NOT']:
+                raise InvalidComparisonOperator(op)  # Maybe need different exception here?
         elif isinstance(self.rhs, (list, tuple)):
             self.values = tuple(self.rhs)
         else:
@@ -96,8 +109,10 @@ class Order:
         self.cols = []
         for col in cols:
             if isinstance(col, tuple):
+                validate_path(col[0])
                 self.cols.append(col)
             elif isinstance(col, str):
+                validate_path(col)
                 self.cols.append((col, Order.ASC))
 
     def render(self, placeholder):
@@ -111,6 +126,8 @@ class Projection:
     """SQL SELECT (really projection - pick column subset) clause"""
 
     def __init__(self, cols):
+        for col in cols:
+            validate_path(col)
         self.cols = cols
 
     def render(self, placeholder):
@@ -121,6 +138,7 @@ class Table:
     """SQL Table selection"""
 
     def __init__(self, name):
+        validate_name(name)
         self.name = name
 
     def render(self, placeholder):
@@ -131,6 +149,8 @@ class Group:
     """SQL GROUP clause"""
 
     def __init__(self, cols):
+        for col in cols:
+            validate_path(col)
         self.cols = cols
 
     def render(self, placeholder):
@@ -138,7 +158,7 @@ class Group:
 
 
 class Aggregation:
-    """Aggregate after a Group"""
+    """Aggregate rows"""
 
     def __init__(self, aggs):
         self.aggs = []
@@ -149,8 +169,10 @@ class Aggregation:
                 elif len(agg) == 2:
                     func, col = agg
                     alias = None
-                if func not in AGG_FUNCS:
+                if func.upper() not in AGG_FUNCS:
                     raise InvalidAggregateFunction(func)
+                if col is not None and col != '*':
+                    validate_path(col)
                 self.aggs.append((func, col, alias))
             else:
                 raise TypeError('expected aggregation tuple but received ' + str(type(agg)))
@@ -159,13 +181,17 @@ class Aggregation:
     def render(self, placeholder):
         exprs = [f'"{col}"' for col in self.group_cols]
         for agg in self.aggs:
+            mod = ''
             func, col, alias = agg
+            if func.upper() == 'NUNIQUE':
+                func = 'COUNT'
+                mod = 'DISTINCT '
             if not col:
                 col = '*'
             if col == '*':
-                expr = f'{func}({col})'  # No quotes for *
+                expr = f'{func}({mod}{col})'  # No quotes for *
             else:
-                expr = f'{func}("{col}")'
+                expr = f'{func}({mod}"{col}")'
             if not alias:
                 alias = func.lower()
             expr += f' AS "{alias}"'
@@ -217,6 +243,8 @@ class CountUnique:
     """Unique count of the rows in a result set"""
 
     def __init__(self, cols=None):
+        for col in cols or []:
+            validate_path(col)
         self.cols = cols
 
     def render(self, placeholder):
@@ -230,6 +258,11 @@ class Join:
     """Join 2 tables"""
 
     def __init__(self, name, left_col, op, right_col, how='INNER'):
+        validate_name(name)
+        validate_path(left_col)
+        validate_path(right_col)
+        if how.upper() not in JOIN_TYPES:
+            raise InvalidJoinOperator(how)
         self.prev_name = None
         self.name = name
         self.left_col = left_col
@@ -245,8 +278,16 @@ class Join:
 
 
 class Query:
-    def __init__(self):
+    def __init__(self, arg=None):
         self.stages = []
+        if isinstance(arg, str):
+            self.append(Table(arg))
+        elif isinstance(arg, list):
+            for stage in arg:
+                self.append(stage)
+
+    def last_stage(self):
+        return self.stages[-1] if self.stages else None
 
     def append(self, stage):
         if isinstance(stage, Aggregation):
@@ -255,31 +296,31 @@ class Query:
                 if isinstance(prev, Projection):
                     raise InvalidQuery('cannot have Aggregation after Projection')
             if self.stages:
-                last = self.stages[-1]
+                last = self.last_stage()
                 if isinstance(last, Group):
                     stage.group_cols = last.cols  # Copy grouped columns
         elif isinstance(stage, Join):
             # Need to look back and grab previous table name
-            last = self.stages[-1] if self.stages else None
+            last = self.last_stage()
             if isinstance(last, (Table, Join)):
                 stage.prev_name = last.name
             else:
                 raise InvalidQuery('Join must follow Table or Join')
         elif isinstance(stage, Count):
             # See if we can combine with previous stages
-            last = self.stages[-1]
+            last = self.last_stage()
             if isinstance(last, Unique):
                 self.stages.pop(-1)
                 cols = None
                 if self.stages:
-                    last = self.stages[-1]
+                    last = self.last_stage()
                     if isinstance(last, Projection):
                         proj = self.stages.pop(-1)
                         cols = proj.cols
                 stage = CountUnique(cols)
         elif isinstance(stage, CountUnique):
             # See if we can combine with previous stages
-            last = self.stages[-1]
+            last = self.last_stage()
             if isinstance(last, Projection):
                 self.stages.pop(-1)
                 stage.cols = last.cols
@@ -317,7 +358,7 @@ class Query:
                 query = f'{query} OFFSET {text}'
             elif isinstance(stage, Count):
                 if isinstance(prev, Unique):
-                    # Should have already been combined, so wwe should never hit this
+                    # Should have already been combined, so we should never hit this
                     query = f'SELECT {text} FROM ({query}) AS tmp'
                 else:
                     query = f'SELECT {text} {query}'
