@@ -120,7 +120,7 @@ class SqlWriter:
                 for obj in records:
                     self._replace(cursor, tablename, obj, schema)
             else:
-                kwargs = {k: v for k, v in self.kwargs.items() if k is not 'query_id'}
+                kwargs = {k: v for k, v in self.kwargs.items() if k != 'query_id'}
                 self.store.upsert_many(cursor, tablename, records, query_id, schema, **kwargs)
             cursor.execute('COMMIT')
         finally:
@@ -233,7 +233,7 @@ if __name__ == '__main__':
     elif args.format in ['sql', 'sqlite', 'sqlite3']:
         from sqlitestorage import SQLiteStorage
         store = SQLiteStorage(args.dbname)
-        writer = store._get_writer('temp')  # SqlWriter(args.directory, store, prefix=args.prefix)
+        writer = store._get_writer()  # SqlWriter(args.directory, store, prefix=args.prefix)
     else:
         raise NotImplementedError(args.format)
 

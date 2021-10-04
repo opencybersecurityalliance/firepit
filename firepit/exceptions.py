@@ -40,3 +40,7 @@ class UnknownViewname(Exception):
 
 class DuplicateTable(Exception):
     pass
+
+
+class UnexpectedError(Exception):
+    pass

@@ -10,6 +10,7 @@ import ujson
 
 from firepit.exceptions import DuplicateTable
 from firepit.exceptions import InvalidAttr
+from firepit.exceptions import UnexpectedError
 from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import SqlStorage
@@ -273,6 +274,9 @@ class PgStorage(SqlStorage):
             self._execute(f'DROP VIEW IF EXISTS "{viewname}";', cursor)
             self._execute(f'CREATE VIEW "{viewname}" AS {select}', cursor)
             is_new = False
+        except psycopg2.errors.SyntaxError as e:
+            # We see this on SQL injection attempts
+            raise UnexpectedError(e.args[0]) from e
         if is_new:
             self._new_name(cursor, viewname, sco_type)
         return cursor

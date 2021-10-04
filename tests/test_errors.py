@@ -6,6 +6,12 @@ from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidStixPath
 from firepit.exceptions import InvalidViewname
 from firepit.exceptions import StixPatternError
+from firepit.exceptions import UnexpectedError
+from firepit.query import Filter
+from firepit.query import Group
+from firepit.query import Predicate
+from firepit.query import Query
+from firepit.query import Table
 
 from .helpers import tmp_storage
 
@@ -85,6 +91,31 @@ def test_sqli_3(fake_bundle_file, tmpdir):
                    'urls', 'value', 'test_urls', 'value')
 
 
+def test_query_sqli_table(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+    store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    with pytest.raises(InvalidViewname):
+        query = Query([Table('urls; select * from url; --')])
+        store.run_query(query)
+
+
+def test_query_sqli_predicate(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+    store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    query = Query('url')
+    count = len(store.run_query(query).fetchall())
+    assert count  # Make sure test is valid
+    query = Query([
+        Table('urls'),
+        # This will not raise, but underlying SQL driver should prevent injection
+        Filter([Predicate('value', '=', '1; select * from url; --')])
+    ])
+    result = store.run_query(query).fetchall()
+    assert len(result) == 0  # If injection succeeded, we'd get len(result) == count
+
+
 def test_empty_results(fake_bundle_file, tmpdir):
     """Look for finding objects that aren't there"""
     store = tmp_storage(tmpdir)
@@ -145,3 +176,25 @@ def test_merge_fail(fake_bundle_file, tmpdir):
 
     with pytest.raises(IncompatibleType):
         store.merge('merged', ['urls', 'ips'])
+
+
+def test_assign_query_sqli(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+    query = Query([
+        Table('url'),
+        Filter([Predicate('value', '=', '1; select * from url; --')])
+    ])
+    with pytest.raises(UnexpectedError):
+        store.assign_query('urls', query)
+
+
+def test_assign_query_sqli_group(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
+    with pytest.raises(InvalidStixPath):
+        query = Query([
+            Table('conns'),
+            Group(['src_ref.value where 1=2; select * from identity; --'])
+        ])
