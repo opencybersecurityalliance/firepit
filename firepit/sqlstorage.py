@@ -397,7 +397,7 @@ class SqlStorage:
         if 'id' not in objects[0]:
             # Maybe it's aggregates?  Do "copy-on-write"
             self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
-            columns = list(objects[0].keys())
+            columns = [key for key in objects[0].keys() if key != 'type']
             schema = {}
             for col in columns:
                 schema[col] = self.infer_type(col, objects[0][col])
@@ -517,8 +517,13 @@ class SqlStorage:
             qry.append(Limit(limit))
         if offset:
             qry.append(Offset(offset))
+        sco_type = self.table_type(viewname)
         cursor = self.run_query(qry)
-        return cursor.fetchall()
+        results = cursor.fetchall()
+        for result in results:
+            result['type'] = sco_type
+        return results
+
 
     def values(self, path, viewname):
         """Get the values of STIX object path `path` (a column) from `viewname`"""
@@ -734,11 +739,6 @@ class SqlStorage:
                     continue
                 agg = auto_agg_tuple(sco_type, col['name'], col['type'])
                 if agg:
-                    if False:  #deps:
-                        logger.debug('PC: deps = %s', deps)
-                        # Probably means recursive def?  Disambiguate columns
-                        #agg = (agg[0], Column(col['name'], table=deps[0]), agg[2])
-                        agg = (agg[0], col['name'], agg[2])
                     aggs.append(agg)
             agg = Aggregation(aggs)
             agg.group_cols = group_cols  #FIXME: how to alias?  Maybe table stack?

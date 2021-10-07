@@ -73,7 +73,7 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     assert len(urls1) == 5
     urls2 = store.lookup('urls', limit=5, offset=2, cols="value")
     assert len(urls2) == 5
-    assert len(urls2[1].keys()) == 1
+    assert len(urls2[1].keys()) == 2
 
     store.assign('sorted', 'urls', op='sort', by='value')
     urls = store.values('url:value', 'sorted')
@@ -143,7 +143,7 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     rows = store.lookup('test_ips')
     assert len(rows) == 2
     for row in rows:
-        ###TEMP: assert row['type'] == 'ipv4-addr'
+        assert row['type'] == 'ipv4-addr'
         assert row['value'] in ips
 
     store.delete()
@@ -259,7 +259,6 @@ def test_schema(fake_bundle_file, tmpdir):
     print(schema)
     columns = [i['name'] for i in schema]
     assert 'id' in columns
-    ###TEMP: assert 'type' in columns
     assert 'value' in columns
 
 
@@ -301,7 +300,6 @@ def test_reassign(fake_bundle_file, fake_csv_file, tmpdir):
     # Simulate running some analytics to enrich these
     for url in urls:
         url['x_enrich'] = 1
-        url['type'] = 'url'  ### TEMP
 
     # Now reload into the same var
     store.reassign('urls', urls)
