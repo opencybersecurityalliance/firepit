@@ -17,16 +17,20 @@ from firepit.props import primary_prop
 from firepit.props import ref_type
 from firepit.query import Aggregation
 from firepit.query import Column
+from firepit.query import Filter
 from firepit.query import Group
 from firepit.query import Join
 from firepit.query import Limit
+from firepit.query import Offset
 from firepit.query import Order
+from firepit.query import Predicate
 from firepit.query import Projection
 from firepit.query import Query
 from firepit.query import Table
 from firepit.splitter import SplitWriter
 from firepit.stix20 import path2sql
 from firepit.stix20 import stix2sql
+from firepit.stix21 import makeid
 from firepit.validate import validate_name
 from firepit.validate import validate_path
 
@@ -34,8 +38,9 @@ logger = logging.getLogger(__name__)
 
 
 def _transform(filename):
-    for obj in raft.get_objects(filename, ['identity', 'observed-data']):
-        if obj['type'] == 'observed-data':
+    for obj in raft.get_objects(filename):  #, ['identity', 'observed-data']):
+        #if obj['type'] == 'observed-data':
+        if obj['type'] != 'identity':
             # obj['x_stix'] = ujson.dumps(obj)  # raft.preserve
             # obj = raft.invert(obj)
             # obj = raft.markroot(obj)  # Also does raft.makeid now
@@ -254,10 +259,10 @@ class SqlStorage:
         return ', '.join(excluded)
 
     def upsert(self, cursor, tablename, obj, query_id, schema):
-        colnames = list(schema.keys())
+        colnames = [k for k in list(schema.keys()) if k != 'type']
         excluded = self._get_excluded(colnames, tablename)
         valnames = ', '.join([f'"{x}"' for x in colnames])
-        placeholders = ', '.join([self.placeholder] * len(obj))
+        placeholders = ', '.join([self.placeholder] * len(colnames))
         stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
         if 'id' in colnames:
             stmt += f' ON CONFLICT (id) DO UPDATE SET {excluded}'
@@ -266,7 +271,7 @@ class SqlStorage:
         logger.debug('_upsert: "%s"', stmt)
         cursor.execute(stmt, values)
 
-        if query_id:
+        if query_id and 'id' in colnames:
             # Now add to query table as well
             idx = colnames.index('id')
             stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
@@ -336,8 +341,6 @@ class SqlStorage:
                         to_type = link[3]
                         query.append(Join(to_type, ref_name, '=', 'id'))
         if op == 'sort':
-            #stmt = self._select(
-            #    on, sortby=by, ascending=ascending, limit=limit, where=where)
             query.append(Order([(target_column, Order.ASC if ascending else Order.DESC)]))
             if limit:
                 query.append(Limit(limit))
@@ -345,7 +348,6 @@ class SqlStorage:
             cols = [Column(c, table=on) for c in self.columns(on)]
             query.append(Projection(cols))  # Is this necessary?
         elif op == 'group':
-            #stmt = self._select(on, groupby=by, where=where)
             query.append(Group([Column(target_column, alias=by)]))
         self.assign_query(viewname, query)
 
@@ -371,10 +373,10 @@ class SqlStorage:
                 obj = {'type': sco_type, primary_prop(sco_type): obj}
             elif not isinstance(obj, dict):
                 raise InvalidObject('Unknown data format')
-            if 'id' not in obj or not preserve_ids:
-                obj['id'] = sco_type + '--' + str(uuid.uuid4())
             if 'type' not in obj:
                 obj['type'] = sco_type
+            if 'id' not in obj or not preserve_ids:
+                obj['id'] = makeid(obj)
             splitter.write(obj)
         splitter.close()
 
@@ -503,15 +505,19 @@ class SqlStorage:
 
     def lookup(self, viewname, cols="*", limit=None, offset=None):
         """Get the value of `viewname`"""
-        validate_name(viewname)
+        qry = Query(viewname)
         if cols != "*":
             dbcols = self.columns(viewname)
             cols = cols.replace(" ", "").split(",")
             for col in cols:
                 if col not in dbcols:
                     raise InvalidAttr(f"{col}")
-        stmt = self._select(viewname, cols=cols, limit=limit, offset=offset)
-        cursor = self._query(stmt)
+            qry.append(Projection(cols))
+        if limit:
+            qry.append(Limit(limit))
+        if offset:
+            qry.append(Offset(offset))
+        cursor = self.run_query(qry)
         return cursor.fetchall()
 
     def values(self, path, viewname):
@@ -519,7 +525,6 @@ class SqlStorage:
         validate_path(path)
         validate_name(viewname)
         sco_type, _, column = path.rpartition(':')
-        print(f'PC: columns({viewname}):', self.columns(viewname))
         if column not in self.columns(viewname):
             #raise InvalidAttr(path)
             #? clause = path2sql(column)
@@ -530,7 +535,6 @@ class SqlStorage:
             target_table = column
             target_column = column
             for link in links:
-                print(link)
                 if link[0] == 'node':
                     #result = _convert_op(sco_type, link[2], op, value)
                     target_table = link[1] or viewname
@@ -722,29 +726,99 @@ class SqlStorage:
 
         # if no aggs supplied, do "auto aggregation"
         if group_cols and not found_agg and sco_type:
-            print('PC: group_cols=', group_cols)
             group_colnames = set([c.name for c in group_cols])
             aggs = []
             for col in self.schema(sco_type):  #viewname):
-                print('PC: col=', col)
                 # Don't aggregate the columns we used for grouping
                 if col['name'] in group_colnames:
                     continue
                 agg = auto_agg_tuple(sco_type, col['name'], col['type'])
                 if agg:
-                    if deps:
+                    if False:  #deps:
+                        logger.debug('PC: deps = %s', deps)
                         # Probably means recursive def?  Disambiguate columns
-                        agg = (agg[0], Column(col['name'], table=deps[0]), agg[2])
+                        #agg = (agg[0], Column(col['name'], table=deps[0]), agg[2])
+                        agg = (agg[0], col['name'], agg[2])
                     aggs.append(agg)
             agg = Aggregation(aggs)
             agg.group_cols = group_cols  #FIXME: how to alias?  Maybe table stack?
-            print('PC: agg.group_cols=', group_cols)
             query.stages.insert(group_pos, agg)  # Nasty
 
         query_text, query_values = query.render('{}')
         stmt = query_text.format(query_values)
-        print('PC: stmt=', stmt)
         logger.debug('assign_query: %s', stmt)
         cursor = self._create_view(viewname, stmt, sco_type, deps=deps)
         self.connection.commit()
         cursor.close()
+
+    def value_counts(self, sco_type, column):
+        """
+        Get the count of observations of each value in `viewname`.`column`
+        Returns list of dicts like {'{column}': '...', 'count': 1}
+        """
+
+        # select sco.value, grouped.count
+        #   from (
+        #     select target_ref, count(*) as count
+        #       from relationship
+        #       where target_ref LIKE 'url--%'
+        #       group by target_ref) as grouped
+        #   join "url" as sco on grouped.target_ref = sco.id
+        #   order by sco.value;
+        qry = (f'SELECT sco."{column}", grouped.count'
+               f' FROM (SELECT target_ref, COUNT(*) as count'
+               f' FROM __contains'
+               f' WHERE target_ref LIKE {self.placeholder}'
+               f' GROUP BY target_ref) AS grouped'
+               f' JOIN "{sco_type}" AS sco ON grouped.target_ref = sco.id'
+               f' ORDER BY sco."{column}"')
+        cursor = self._query(qry, (f'{sco_type}--%',))
+        return cursor.fetchall()
+
+    def number_observed(self, viewname, column, value=None):
+        """
+        Get the count of observations of `value` in `viewname`.`column`
+        Returns integer count
+        """
+        qry = Query([
+            Table(viewname),
+            Join('__contains', 'id', '=', 'target_ref'),
+            Join('observed-data', 'source_ref', '=', 'id')
+        ])
+        if value:
+            qry.append(Filter([Predicate(column, '=', value)]))
+        qry.append(Aggregation([('SUM', 'number_observed', 'count')]))
+        cursor = self.run_query(qry)
+        res = cursor.fetchone()
+        return list(res.values())[0] if res else 0
+
+    def timestamped(self, viewname, column, value=None):
+        """
+        Get the timestamped observations of `value` in `viewname`.`column`
+        Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
+        """
+
+        # Something like this:
+        # select sco."{column}" as "{column}", obs."{ts}" as "{ts}"
+        #   from "{viewname}" sco
+        #     join __contains c on sco.id = c.target_ref
+        #     join "observed-data" obs on c.source_ref = obs.id
+        #   where sco."{column}" = {value};
+
+        qry = Query([
+            Table(viewname),
+            Join('__contains', 'id', '=', 'target_ref'),
+            Join('observed-data', 'source_ref', '=', 'id')
+        ])
+        if value:
+            qry.append(Filter([Predicate(column, '=', value)]))
+        qry.append(
+            Projection([
+                Column('first_observed', 'observed-data', 'timestamp'),
+                Column(column, viewname)
+            ])
+        )
+        cursor = self.run_query(qry)
+        res = cursor.fetchall()
+        cursor.close()
+        return res

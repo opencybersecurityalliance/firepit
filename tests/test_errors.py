@@ -137,7 +137,7 @@ def test_lookup_bad_offset(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])
     store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         store.lookup('urls', offset="1; select * from urls; --")
 
 

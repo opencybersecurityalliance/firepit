@@ -85,11 +85,8 @@ def _is_custom_prop(prop):
     return prop.startswith('x_')
 
 
-def _set_id(idx, obs, oid):
-    #stype = obs['type']
-    #uid = oid.lstrip('observed-data')
-    #obs['id'] = f'{stype}--{uid}_{idx}'
-    sid = stix21.makeid(obs)  # TEMP
+def _set_id(idx, obs):
+    sid = stix21.makeid(obs)
     obs['id'] = sid
     return sid
 
@@ -114,7 +111,7 @@ def promote(obj):
             for prop in ['first_observed', 'last_observed', 'number_observed']:
                 if prop in obj:
                     obs[prop] = obj[prop]
-            uid = _set_id(idx, obs, oid)
+            uid = _set_id(idx, obs)
             for prop, val in obs.items():
                 if prop.endswith('_ref') or prop.endswith('_refs'):
                     if not isinstance(val, list):
@@ -145,10 +142,9 @@ def makeid(obj):
     Deprecated: moved into `markroot`
     Add unique object IDs to SCOs inside an Observation SDO
     '''
-    oid = obj['id']
     observables = obj.get('objects', {})
     for idx, obs in observables.items():
-        _set_id(idx, obs, oid)
+        _set_id(idx, obs)
     return obj
 
 
@@ -247,12 +243,104 @@ def invert(obj):
     return obj
 
 
-def make_sro(obs):
+def upgrade_2021(obs):
     """
-    Convert ref lists to SROs
+    Upgrade a 2.0 observation to a 2.1 observation
     """
+    results = [obs]
+    if 'objects' not in obs:
+        return results
     scos = obs['objects']
-    object_refs = []
+    object_refs = set()
+    ref_map = {}
+    for idx, sco in scos.items():
+        # Assign a STIX 2.1-style identifier
+        sid = _set_id(idx, sco)
+        ref_map[idx] = sid
+        object_refs.add(sid)
+        sco['spec_version'] = '2.1'
+        results.append(sco)
+
+    # Resolve 2.0-style refs to new style
+    for obj in results:  # Includes SDOs, SCOs, and SROs
+        if obj['type'] == 'relationship':
+            continue
+
+        for prop, val in obj.items():
+            if prop.endswith('_ref'):
+                ref = obj[prop]
+                obj[prop] = ref_map.get(val, ref)
+            elif prop.endswith('_refs'):
+                if isinstance(val, list):
+                    for i in val:
+                        obj[prop] = ref_map.get(i, i)
+                else:
+                    ref = obj[prop]
+                    obj[prop] = [ref_map.get(val, ref)]
+
+    del obs['objects']
+    obs['object_refs'] = list(object_refs)
+    obs['spec_version'] = '2.1'
+
+    return results
+
+
+def make_sro_21(obj):
+    """
+    For STIX 2.1 objects, convert ref lists to SROs
+    """
+    results = [obj]
+    oid = obj['id']
+
+    obj_type = obj['type']
+    if obj_type == 'identity':
+        return results
+    elif obj_type == 'observed-data':
+        for ref in obj['object_refs']:
+            # Append pseudo-relationship for "Observtion CONTAINS SCO"
+            results.append({
+                'type': '__contains',
+                'source_ref': oid,
+                'target_ref': ref
+            })
+        del obj['object_refs']
+        return results
+
+    # Create SRO for ref lists
+    ref_lists = []
+    for prop, val in obj.items():
+        if prop.endswith('_refs'):
+            if not isinstance(val, list):
+                val = [val]
+            if prop != 'object_refs':
+                for ref in val:
+                    if ref != oid:  # Avoid bogus references
+                        sro = {
+                            'id': f'relationship--{uuid.uuid4()}',
+                            'type': 'relationship',
+                            'relationship_type': prop,
+                            'source_ref': oid,
+                            'target_ref': ref
+                        }
+                        results.append(sro)
+
+            # Store prop name to remove later
+            ref_lists.append(prop)
+
+    for prop in ref_lists:
+        del obj[prop]
+
+    return results
+
+
+def make_sro(obs):  # TODO: better name
+    """
+    Convert ref lists to SROs, add ids if missing, etc.
+    """
+    if obs.get('spec_version', '2.0') == '2.1':
+        return make_sro_21(obs)
+
+    scos = obs['objects']
     ref_map = {}
     results = [obs]
 
@@ -261,16 +349,11 @@ def make_sro(obs):
     reffed = set()
     
     for idx, sco in scos.items():
-        # "Inherit" some basic observed-data properties
-        for prop in ['first_observed', 'last_observed', 'number_observed']:
-            if prop in obs:
-                sco[prop] = obs[prop]
-
         # Put SCO at end of pref list
         prefs[sco['type']].append(idx)
         
         # Assign a STIX 2.1-style identifier
-        sid = _set_id(idx, sco, None)  # oid no longer needed
+        sid = _set_id(idx, sco)
         ref_map[idx] = sid
 
         # Create SRO for ref lists
@@ -296,7 +379,6 @@ def make_sro(obs):
                 if not isinstance(val, list):
                     val = [val]
                 for ref in val:
-                    #print('PC: ref=%s idx=%s' % (ref, idx))
                     if ref in scos and ref != idx:  # Avoid bogus references
                         # We'll replace these indices later
                         sro = {
@@ -318,26 +400,20 @@ def make_sro(obs):
         for prop in ref_lists:
             del sco[prop]
 
-        object_refs.append(sid)
-
-        #TODO: if sco in results already, update
-        results.append(sco)
-
         # Append pseudo-relationship for "Observtion CONTAINS SCO"
         results.append({
-            'id': f'relationship--{uuid.uuid4()}',
-            'type': 'relationship',
-            'relationship_type': 'object_refs',
+            'type': '__contains',
             'source_ref': obs['id'],
             'target_ref': sco['id']
         })
         
         # calc distance?
-        # promote?
+
+        #TODO: if sco in results already, update?
+        results.append(sco)
 
     # Resolve 2.0-style refs to new style
     for obj in results:  # Includes SDOs, SCOs, and SROs
-        #print("PC: id = %s" % obj['id'])
         if obj['type'] == 'relationship':
             continue
 
@@ -362,8 +438,6 @@ def make_sro(obs):
                     elif i == k:
                         scos[k]['x_root'] = 1
                     break
-                
-    #obs['object_refs'] = object_refs
 
     del obs['objects']
 
@@ -395,12 +469,11 @@ def markroot(obj):
     """
     objs = obj['objects']
     reffed = set()
-    oid = obj['id']
 
     # Keep track of the preference order of each reffed object, by type
     prefs = defaultdict(list)
     for idx, sco in objs.items():
-        _set_id(idx, sco, oid)
+        _set_id(idx, sco)
         prefs[sco['type']].append(idx)
         for attr, val in sco.items():
             if attr.endswith('_ref'):

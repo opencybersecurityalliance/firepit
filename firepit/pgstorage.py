@@ -258,12 +258,14 @@ class PgStorage(SqlStorage):
                 self._execute(f'ALTER TABLE "{viewname}" RENAME TO "_{viewname}"', cursor)
                 slct = slct.replace(viewname, f'_{viewname}')
             # Swap out the viewname for its definition
-            select = re.sub(f'"{viewname}"', f'({slct}) AS tmp', select)
+            select = re.sub(f'FROM "{viewname}"', f'FROM ({slct}) AS tmp', select, count=1)
+            select = re.sub(f'"{viewname}"', 'tmp', select)
         try:
             self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {select}', cursor)
-        except psycopg2.errors.UndefinedTable:
+        except psycopg2.errors.UndefinedTable as e:
             # Missing dep?
             self.connection.rollback()
+            logger.error(e, exc_info=e)
             cursor = self._execute('BEGIN;')
             self._create_empty_view(viewname, cursor)
         except psycopg2.errors.InvalidTableDefinition:
@@ -363,6 +365,7 @@ class PgStorage(SqlStorage):
 
         placeholders = ', '.join([f"({', '.join([self.placeholder] * len(colnames))})"] * len(objs))
         stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES {placeholders}'
+        idx = None
         if 'id' in colnames:
             idx = colnames.index('id')
             if tablename == 'identity':
@@ -374,13 +377,13 @@ class PgStorage(SqlStorage):
         values = []
         query_values = []
         for obj in objs:
-            if query_id:
+            if query_id and idx:
                 query_values.append(obj[idx])
                 query_values.append(query_id)
             values.extend([str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value for value in obj])
         cursor.execute(stmt, values)
 
-        if query_id:
+        if query_id and idx:
             # Now add to query table as well
             placeholders = ', '.join([f'({self.placeholder}, {self.placeholder})'] * len(objs))
             stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'

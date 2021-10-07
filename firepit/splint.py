@@ -33,12 +33,12 @@ def _timefmt(ts):
     return ts.strftime(TIME_FMT)[:-3] + 'Z'
 
 
-def _start_bundle():
+def _start_bundle(spec_version='2.0'):
     bundle_id = 'bundle--' + str(uuid.uuid4())
     sys.stdout.write('{"type":"bundle",'
                      '"id": "')
     sys.stdout.write(bundle_id + '",')
-    sys.stdout.write('"spec_version":"2.0",'
+    sys.stdout.write(f'"spec_version":"{spec_version}",'
                      '"objects":[')
 
 
@@ -133,6 +133,24 @@ def limit(
         else:
             sys.stdout.write(f'{blob}')
         count += 1
+    _end_bundle()
+
+
+@app.command()
+def upgrade(
+    filename: str = typer.Argument(..., help="STIX bundle file"),
+):
+    """Truncate STIX bundle"""
+    _start_bundle('2.1')
+    count = 0
+    for obs in raft.get_objects(filename):
+        for obj in raft.upgrade_2021(obs):
+            blob = json.dumps(obj, separators=(',', ':'))
+            if count:
+                sys.stdout.write(f',{blob}')
+            else:
+                sys.stdout.write(f'{blob}')
+            count += 1
     _end_bundle()
 
 

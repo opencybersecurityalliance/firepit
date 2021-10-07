@@ -135,6 +135,38 @@ class SqlWriter:
         return self.store.schema(tablename)
 
 
+class RecordList:
+    def __init__(self, id_idx):
+        self.id_idx = id_idx
+        self.reset()
+
+    def reset(self):
+        self.records = {} if self.id_idx else []
+
+    def append(self, record):
+        if self.id_idx:
+            rec_id = record[self.id_idx]
+            if rec_id in self.records:
+                # Update record instead
+                rec = self.records[rec_id]
+                for i, val in enumerate(record):
+                    if val is not None:
+                        rec[i] = val
+            else:
+                self.records[rec_id] = record
+        else:
+            self.records.append(record)
+
+    def __iter__(self):
+        if self.id_idx:
+            yield from self.records.values()
+        else:
+            yield from self.records
+
+    def __len__(self):
+        return len(self.records)
+
+
 class SplitWriter:
     """
     Writes STIX objects using `writer`.  This class will track schema
@@ -147,7 +179,7 @@ class SplitWriter:
         self.schemas = {}
         self.writer = writer
         self.batchsize = batchsize
-        self.records = defaultdict(list)
+        self.records = {}
         self.extras = extras or {}
         self.replace = replace
         self.query_id = query_id
@@ -176,7 +208,7 @@ class SplitWriter:
             add_table = True
         new_obj = {}
         for key, value in obj.items():
-            if len(key) > 63:
+            if len(key) > 63 or key == 'type':
                 continue
             new_obj[key] = value
             if key not in schema:
@@ -197,15 +229,24 @@ class SplitWriter:
                 for key in set(schema) - set(loaded_schema):
                     new_columns[key] = schema[key]
                     add_col = True
+        if obj_type in self.records:
+            reclist = self.records[obj_type]
+        else:
+            try:
+                id_idx = list(schema.keys()).index('id')
+            except ValueError:
+                id_idx = None
+            reclist = RecordList(id_idx)
+            self.records[obj_type] = reclist
         if add_col:
             for col, col_type in new_columns.items():
-                for rec in self.records[obj_type]:
+                for rec in reclist:
                     rec.append(None)
                 self.writer.new_property(obj_type, col, col_type)
         self.records[obj_type].append([obj.get(col) for col in schema.keys()])
         if len(self.records[obj_type]) % self.batchsize == 0:
             self.writer.write_records(obj_type, self.records[obj_type], schema, self.replace, self.query_id)
-            self.records[obj_type] = []
+            self.records[obj_type].reset()
 
     def close(self):
         if self.batchsize > 1:

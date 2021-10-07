@@ -42,22 +42,34 @@ class InvalidQuery(Exception):
     pass
 
 
+def _quote(obj):
+    """Double-quote an SQL identifier if necessary"""
+    if isinstance(obj, str):
+        print('quoting', obj)
+        return f'"{obj}"'
+    return str(obj)
+
+
 class Column:
     """SQL Column name"""
 
     def __init__(self, name, table=None, alias=None):
+        validate_path(name)
+        if table:
+            validate_name(table)
+        if alias:
+            validate_path(alias)
         self.name = name
         self.table = table
         self.alias = alias
 
     def __str__(self):
-        # This is extremely hacky and gross
         if self.table:
-            result = f'{self.table}"."{self.name}'
+            result = f'"{self.table}"."{self.name}"'
         else:
-            result = self.name
+            result = f'"{self.name}"'
         if self.alias:
-            result = f'{result}" AS "{self.alias}'
+            result = f'{result} AS "{self.alias}"'
         return result
 
 
@@ -154,14 +166,13 @@ class Order:
 
 class Projection:
     """SQL SELECT (really projection - pick column subset) clause"""
-    #FIXME: need be to able to prefix cols with table in case of joins
     def __init__(self, cols):
         for col in cols:
             _validate_column(col)
         self.cols = cols
 
     def render(self, placeholder):
-        return ', '.join([f'"{col}"' for col in self.cols])
+        return ', '.join([_quote(col) for col in self.cols])
 
 
 class Table:
@@ -193,7 +204,7 @@ class Group:
                     cols.append(col.name)
             else:
                 cols.append(col)
-        return ', '.join([f'"{col}"' for col in cols])
+        return ', '.join([_quote(col) for col in cols])
 
 
 class Aggregation:
@@ -218,7 +229,7 @@ class Aggregation:
         self.group_cols = []  # Filled in by Query
 
     def render(self, placeholder):
-        exprs = [f'"{col}"' for col in self.group_cols]
+        exprs = [_quote(col) for col in self.group_cols]
         for agg in self.aggs:
             mod = ''
             func, col, alias = agg
@@ -296,24 +307,34 @@ class CountUnique:
 class Join:
     """Join 2 tables"""
 
-    def __init__(self, name, left_col, op, right_col, how='INNER'):
+    def __init__(self, name, left_col, op, right_col, how='INNER', alias=None, lhs=None):
         validate_name(name)
         _validate_column(left_col)
         _validate_column(right_col)
+        if alias:
+            validate_name(alias)
+        if lhs:
+            validate_name(name)
         if how.upper() not in JOIN_TYPES:
             raise InvalidJoinOperator(how)
-        self.prev_name = None  # Filled in by Query
+        self.prev_name = lhs  # If none, filled in by Query
         self.name = name
         self.left_col = left_col
         self.op = op
         self.right_col = right_col
         self.how = how
+        self.alias = alias
 
     def render(self, placeholder):
         # Assume there's a FROM before this?
-        return (f'{self.how.upper()} JOIN "{self.name}"'
+        target = f'"{self.name}"'
+        table = target
+        if self.alias:
+            target += f' AS "{self.alias}"'
+            table = f'"{self.alias}"'
+        return (f'{self.how.upper()} JOIN {target}'
                 f' ON "{self.prev_name}"."{self.left_col}"'
-                f' {self.op} "{self.name}"."{self.right_col}"')
+                f' {self.op} {table}."{self.right_col}"')
 
 
 class Query:
@@ -343,7 +364,8 @@ class Query:
             # Need to look back and grab previous table name
             last = self.last_stage()
             if isinstance(last, (Table, Join)):  #TODO: use table stack
-                stage.prev_name = last.name
+                if not stage.prev_name:
+                    stage.prev_name = last.name
             else:
                 raise InvalidQuery('Join must follow Table or Join')
         elif isinstance(stage, Count):
