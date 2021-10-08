@@ -135,8 +135,8 @@ class SQLiteStorage(SqlStorage):
             logger.debug('_create_table: %s', e)  #, exc_info=e)
             if e.args[0].startswith(f'table "{tablename}" already exists'):
                 raise DuplicateTable(tablename) from e
-        if 'x_contained_by_ref' in columns:
-            self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+        if tablename == '__contains':  # Special internal table
+            self._create_index(cursor)
         self.connection.commit()
         cursor.close()
 

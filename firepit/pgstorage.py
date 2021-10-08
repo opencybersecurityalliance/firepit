@@ -217,8 +217,8 @@ class PgStorage(SqlStorage):
         logger.debug('_create_table: "%s"', stmt)
         try:
             cursor = self._execute(stmt)
-            if not self.defer_index and 'x_contained_by_ref' in columns:
-                self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+            if not self.defer_index and tablename == '__contains':
+                self._create_index(cursor)
             self.connection.commit()
             cursor.close()
         except (psycopg2.errors.DuplicateTable,
@@ -424,11 +424,9 @@ class PgStorage(SqlStorage):
             qobjs = [(obj[idx], query_id) for obj in objs]
             cursor.copy_expert(copy_stmt, TuplesToTextIO(qobjs, ['sco_id', 'query_id'], sep=SEP))
 
-    def finish(self):
-        if self.defer_index:
+    def finish(self, index=True):
+        if index:
             cursor = self._execute('BEGIN;')
-            for tablename in self.tables():
-                if 'x_contained_by_ref' in self.columns(tablename):
-                    self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+            self._create_index(cursor)
             self.connection.commit()
             cursor.close()

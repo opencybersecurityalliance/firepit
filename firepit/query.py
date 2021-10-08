@@ -11,11 +11,16 @@ JOIN_TYPES = ['INNER', 'OUTER', 'LEFT OUTER', 'CROSS']
 AGG_FUNCS = ['COUNT', 'SUM', 'MIN', 'MAX', 'AVG', 'NUNIQUE']
 
 
+def _validate_column_name(name):
+    if name != '*':
+        validate_path(name)  # This is for STIX object paths, not column names...
+
+
 def _validate_column(col):
     if isinstance(col, str):
-        validate_path(col)
+        _validate_column_name(col)
     elif isinstance(col, Column):
-        validate_path(col.name)
+        _validate_column_name(col.name)
         if col.table:
             validate_name(col.table)
         if col.alias:
@@ -45,7 +50,8 @@ class InvalidQuery(Exception):
 def _quote(obj):
     """Double-quote an SQL identifier if necessary"""
     if isinstance(obj, str):
-        print('quoting', obj)
+        if obj == '*':
+            return obj
         return f'"{obj}"'
     return str(obj)
 
@@ -54,7 +60,7 @@ class Column:
     """SQL Column name"""
 
     def __init__(self, name, table=None, alias=None):
-        validate_path(name)
+        _validate_column_name(name)
         if table:
             validate_name(table)
         if alias:
@@ -65,9 +71,9 @@ class Column:
 
     def __str__(self):
         if self.table:
-            result = f'"{self.table}"."{self.name}"'
+            result = f'"{self.table}".{_quote(self.name)}'
         else:
-            result = f'"{self.name}"'
+            result = f'{_quote(self.name)}'
         if self.alias:
             result = f'{result} AS "{self.alias}"'
         return result

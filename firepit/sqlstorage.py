@@ -187,14 +187,18 @@ class SqlStorage:
             stmt += f' OFFSET {offset}'
         return stmt
 
+    def _create_index(self, cursor):
+        self._execute('CREATE INDEX "source_ref_idx" ON "__contains" ("source_ref");', cursor)
+        self._execute('CREATE INDEX "target_ref_idx" ON "__contains" ("target_ref");', cursor)
+
     def _create_table(self, tablename, columns):
         stmt = f'CREATE TABLE "{tablename}" ('
         stmt += ','.join([f'"{colname}" {coltype}' for colname, coltype in columns.items()])
         stmt += ');'
         logger.debug('_create_table: "%s"', stmt)
         cursor = self._execute(stmt)
-        if 'x_contained_by_ref' in columns:
-            self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+        if tablename == '__contains':
+            self._create_index(cursor)
         self.connection.commit()
         cursor.close()
 
@@ -320,7 +324,7 @@ class SqlStorage:
 
     def assign(self, viewname, on, op=None, by=None, ascending=True, limit=None):
         """
-        Perform (unary) operation `op` on `on` and store result as `viewname`
+        DEPRECATED: Perform (unary) operation `op` on `on` and store result as `viewname`
         """
         validate_name(viewname)
         validate_name(on)
@@ -428,20 +432,6 @@ class SqlStorage:
 
         self.connection.commit()
 
-    def update(self, objects, query_id=None):
-        """Update `objects`"""
-        writer = self._get_writer()
-        splitter = SplitWriter(writer, batchsize=1000, replace=True)
-        for obj in objects:
-            if 'type' not in obj:
-                raise InvalidObject('missing `type`')
-            elif not isinstance(obj, dict):
-                raise InvalidObject('Unknown data format')
-            if 'id' not in obj:
-                raise InvalidObject('missing `id`')
-            splitter.write(obj)
-        splitter.close()
-
     def join(self, viewname, l_var, l_on, r_var, r_on):
         """Join vars `l_var` and `r_var` and store result as `viewname`"""
         validate_name(viewname)
@@ -517,7 +507,7 @@ class SqlStorage:
             qry.append(Limit(limit))
         if offset:
             qry.append(Offset(offset))
-        sco_type = self.table_type(viewname)
+        sco_type = self.table_type(viewname) or viewname
         cursor = self.run_query(qry)
         results = cursor.fetchall()
         for result in results:
@@ -531,8 +521,6 @@ class SqlStorage:
         validate_name(viewname)
         sco_type, _, column = path.rpartition(':')
         if column not in self.columns(viewname):
-            #raise InvalidAttr(path)
-            #? clause = path2sql(column)
             if not sco_type:
                 sco_type = self.table_type(viewname)
             links = parse_path(column)
@@ -541,7 +529,6 @@ class SqlStorage:
             target_column = column
             for link in links:
                 if link[0] == 'node':
-                    #result = _convert_op(sco_type, link[2], op, value)
                     target_table = link[1] or viewname
                     target_column = link[2]
                 elif link[0] == 'rel':
@@ -550,13 +537,6 @@ class SqlStorage:
                     to_type = link[3]
                     joins += f' JOIN "{to_type}" ON "{from_type}"."{ref_name}" = "{to_type}".id'
             stmt = f'SELECT "{target_table}"."{target_column}" AS "{column}" FROM "{viewname}" {joins}'
-            #types = set(ref_type(sco_type, column))
-            #all_tables = set(self.tables())
-            #join_tables = [f'"{t}"' for t in list(types & all_tables)]
-            #stmt = f'SELECT "{column}" FROM "{viewname}" JOIN '
-            #stmt += ', '.join(join_tables)
-            #for table in join_tables:
-            #    stmt += f' ON "{viewname}"."column" = {table}.id'
         else:
             stmt = f'SELECT "{column}" FROM "{viewname}"'
         cursor = self._query(stmt)
@@ -591,7 +571,6 @@ class SqlStorage:
     def table_type(self, viewname):
         """Get the SCO type for table/view `viewname`"""
         validate_name(viewname)
-        #stmt = f'SELECT "type" FROM "{viewname}" WHERE "type" IS NOT NULL LIMIT 1;'
         stmt = f'SELECT "type" FROM "__symtable" WHERE name = {self.placeholder};'
         cursor = self._query(stmt, (viewname,))
         res = cursor.fetchone()
@@ -702,7 +681,7 @@ class SqlStorage:
         self.connection.commit()
         cursor.close()
 
-    def finish(self):
+    def finish(self, index=True):
         """Do any DB-specific post-caching/insertion activity, such as indexing"""
         # This is a DB-specific hook, but by default we'll do nothing
         pass
@@ -790,9 +769,9 @@ class SqlStorage:
         qry.append(Aggregation([('SUM', 'number_observed', 'count')]))
         cursor = self.run_query(qry)
         res = cursor.fetchone()
-        return list(res.values())[0] if res else 0
+        return int(res['count']) if res else 0
 
-    def timestamped(self, viewname, column, value=None):
+    def timestamped(self, viewname, column=None, value=None):
         """
         Get the timestamped observations of `value` in `viewname`.`column`
         Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
@@ -810,14 +789,23 @@ class SqlStorage:
             Join('__contains', 'id', '=', 'target_ref'),
             Join('observed-data', 'source_ref', '=', 'id')
         ])
-        if value:
+        if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
-        qry.append(
-            Projection([
-                Column('first_observed', 'observed-data', 'timestamp'),
-                Column(column, viewname)
-            ])
-        )
+        qry.append(Order(['first_observed']))
+        if column:
+            qry.append(
+                Projection([
+                    Column('first_observed', 'observed-data', 'timestamp'),
+                    Column(column, viewname)
+                ])
+            )
+        else:
+            qry.append(
+                Projection([
+                    Column('first_observed', 'observed-data', 'timestamp'),
+                    Column('*', viewname)
+                ])
+            )
         cursor = self.run_query(qry)
         res = cursor.fetchall()
         cursor.close()

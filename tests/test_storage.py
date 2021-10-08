@@ -690,6 +690,7 @@ def test_number_observed(fake_bundle_file, tmpdir):
     store.cache('q1', [fake_bundle_file])
 
     store.extract('users', 'user-account', 'q1', "[ipv4-addr:value LIKE '10.%']")
+    assert isinstance(store.number_observed('users', 'account_login'), int)
     assert store.number_observed('users', 'account_login') == 100
     assert store.number_observed('users', 'account_login', 'henry') == 2
     assert store.number_observed('users', 'account_login', 'isabel') == 12
@@ -700,12 +701,19 @@ def test_timestamped(fake_bundle_file, tmpdir):
     store.cache('q1', [fake_bundle_file])
 
     store.extract('users', 'user-account', 'q1', "[ipv4-addr:value LIKE '10.%']")
-    data = store.timestamped('users', 'account_login')
-    assert len(data) == 100
+    accounts = store.timestamped('users')
+    assert len(accounts) == 100
+    assert 'timestamp' in accounts[0].keys()
+    assert 'account_login' in accounts[0].keys()
+    assert 'user_id' in accounts[0].keys()
+    assert 'id' in accounts[0].keys()
+    logins = store.timestamped('users', 'account_login')
+    assert len(logins) == 100
+    assert set(logins[0].keys()) == {'timestamp', 'account_login'}
     henry = store.timestamped('users', 'account_login', 'henry')
-    assert len(henry) == len([i for i in data if i['account_login'] == 'henry'])
+    assert len(henry) == len([i for i in logins if i['account_login'] == 'henry'])
     isabel = store.timestamped('users', 'account_login', 'isabel')
-    assert len(isabel) == len([i for i in data if i['account_login'] == 'isabel'])
+    assert len(isabel) == len([i for i in logins if i['account_login'] == 'isabel'])
 
 def test_value_counts(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
