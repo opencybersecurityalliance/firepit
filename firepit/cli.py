@@ -32,6 +32,9 @@ state = {
 }
 
 
+format_help = "Output format [table, json, csv]"
+
+
 def print_rows(rows: List[Dict], format: str):
     if format == 'json':
         print(json.dumps(rows))  # , separators=[',', ':']))
@@ -123,7 +126,7 @@ def lookup(
     name: str = typer.Argument(..., help="View name to look up"),
     limit: int = typer.Option(None, help="Max number of rows to return"),
     offset: int = typer.Option(0, help="Number of rows to skip"),
-    format: str = typer.Option('table', help="Output format [table, json]"),
+    format: str = typer.Option('table', help=format_help),
 ):
     """Retrieve a view"""
     db = get_storage(state['dbname'], state['session'])

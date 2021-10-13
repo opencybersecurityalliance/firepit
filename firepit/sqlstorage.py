@@ -187,9 +187,10 @@ class SqlStorage:
             stmt += f' OFFSET {offset}'
         return stmt
 
-    def _create_index(self, cursor):
-        self._execute('CREATE INDEX "source_ref_idx" ON "__contains" ("source_ref");', cursor)
-        self._execute('CREATE INDEX "target_ref_idx" ON "__contains" ("target_ref");', cursor)
+    def _create_index(self, tablename, cursor):
+        if tablename in ['__contains', '__reflist', 'relationship']:
+            for col in ['source_ref', 'target_ref']:
+                self._execute(f'CREATE INDEX "{tablename}_{col}_idx" ON "{tablename}" ("{col}");', cursor)
 
     def _create_table(self, tablename, columns):
         stmt = f'CREATE TABLE "{tablename}" ('
@@ -197,8 +198,7 @@ class SqlStorage:
         stmt += ');'
         logger.debug('_create_table: "%s"', stmt)
         cursor = self._execute(stmt)
-        if tablename == '__contains':
-            self._create_index(cursor)
+        self._create_index(tablename, cursor)
         self.connection.commit()
         cursor.close()
 
@@ -520,14 +520,15 @@ class SqlStorage:
         validate_path(path)
         validate_name(viewname)
         sco_type, _, column = path.rpartition(':')
+        qry = Query(viewname)
         if column not in self.columns(viewname):
+            aliases = {}
             if not sco_type:
                 sco_type = self.table_type(viewname)
             links = parse_path(column)
-            joins = ''
             target_table = column
             target_column = column
-            for link in links:
+            for link in links:  #TODO: lift this out to new function
                 if link[0] == 'node':
                     target_table = link[1] or viewname
                     target_column = link[2]
@@ -535,11 +536,16 @@ class SqlStorage:
                     from_type = link[1] or viewname  # FIXME
                     ref_name = link[2]
                     to_type = link[3]
-                    joins += f' JOIN "{to_type}" ON "{from_type}"."{ref_name}" = "{to_type}".id'
-            stmt = f'SELECT "{target_table}"."{target_column}" AS "{column}" FROM "{viewname}" {joins}'
+                    lhs = aliases.get(from_type, from_type)
+                    alias, _, _ = ref_name.rpartition('_')
+                    aliases[to_type] = alias
+                    qry.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
+            if target_table in aliases:
+                target_table = aliases[target_table]
+            qry.append(Projection([Column(target_column, table=target_table, alias=column)]))
         else:
-            stmt = f'SELECT "{column}" FROM "{viewname}"'
-        cursor = self._query(stmt)
+            qry.append(Projection([column]))
+        cursor = self.run_query(qry)
         result = cursor.fetchall()
         return [row[column] for row in result]
 
@@ -735,21 +741,13 @@ class SqlStorage:
         Get the count of observations of each value in `viewname`.`column`
         Returns list of dicts like {'{column}': '...', 'count': 1}
         """
-
-        # select sco.value, grouped.count
-        #   from (
-        #     select target_ref, count(*) as count
-        #       from relationship
-        #       where target_ref LIKE 'url--%'
-        #       group by target_ref) as grouped
-        #   join "url" as sco on grouped.target_ref = sco.id
-        #   order by sco.value;
-        qry = (f'SELECT sco."{column}", grouped.count'
+        qry = (f'SELECT sco."{column}", SUM(grouped.count) as count'
                f' FROM (SELECT target_ref, COUNT(*) as count'
                f' FROM __contains'
                f' WHERE target_ref LIKE {self.placeholder}'
                f' GROUP BY target_ref) AS grouped'
                f' JOIN "{sco_type}" AS sco ON grouped.target_ref = sco.id'
+               f' GROUP BY sco."{column}"'
                f' ORDER BY sco."{column}"')
         cursor = self._query(qry, (f'{sco_type}--%',))
         return cursor.fetchall()

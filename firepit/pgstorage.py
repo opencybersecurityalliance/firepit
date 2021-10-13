@@ -217,8 +217,8 @@ class PgStorage(SqlStorage):
         logger.debug('_create_table: "%s"', stmt)
         try:
             cursor = self._execute(stmt)
-            if not self.defer_index and tablename == '__contains':
-                self._create_index(cursor)
+            if not self.defer_index:
+                self._create_index(tablename, cursor)
             self.connection.commit()
             cursor.close()
         except (psycopg2.errors.DuplicateTable,
@@ -427,6 +427,10 @@ class PgStorage(SqlStorage):
     def finish(self, index=True):
         if index:
             cursor = self._execute('BEGIN;')
-            self._create_index(cursor)
+            tables = ['__contains', '__reflist']
+            if 'relationship' in self.tables():
+                tables.append('relationship')
+            for tablename in tables:
+                self._create_index(tablename, cursor)
             self.connection.commit()
             cursor.close()

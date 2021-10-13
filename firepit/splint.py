@@ -42,13 +42,21 @@ def _start_bundle(spec_version='2.0'):
                      '"objects":[')
 
 
+def _dump_obj(obj, count):
+    blob = json.dumps(obj, separators=(',', ':'))
+    if count:
+        sys.stdout.write(f',{blob}')
+    else:
+        sys.stdout.write(f'{blob}')
+
+
 def _end_bundle():
     sys.stdout.write(']}')
 
 
 @app.command()
 def randomize_ids(
-    filename: str = typer.Argument(..., help="STIX bundle file"),
+    filename: str = typer.Argument(..., help="STIX 2.0 bundle file"),
 ):
     """Randomize STIX observation IDs in a bundle"""
     _start_bundle()
@@ -66,18 +74,14 @@ def randomize_ids(
             obj['id'] = new_id
             if 'modified' in obj:
                 obj['modified'] = _timefmt(datetime.datetime.utcnow())
-        blob = json.dumps(obj, separators=(',', ':'))
-        if count:
-            sys.stdout.write(f',{blob}')
-        else:
-            sys.stdout.write(f'{blob}')
+        _dump_obj(obj, count)
         count += 1
     _end_bundle()
 
 
 @app.command()
 def dedup_ids(
-    filename: str = typer.Argument(..., help="STIX bundle file"),
+    filename: str = typer.Argument(..., help="STIX 2.0 bundle file"),
 ):
     """Replace duplicate IDs with random IDs"""
     _start_bundle()
@@ -107,11 +111,7 @@ def dedup_ids(
                 modified = True
             if 'modified' in obj and modified:
                 obj['modified'] = _timefmt(datetime.datetime.utcnow())
-        blob = json.dumps(obj, separators=(',', ':'))
-        if count:
-            sys.stdout.write(f',{blob}')
-        else:
-            sys.stdout.write(f'{blob}')
+        _dump_obj(obj, count)
         count += 1
     _end_bundle()
 
@@ -119,7 +119,7 @@ def dedup_ids(
 @app.command()
 def limit(
     n: int = typer.Argument(..., help="Max number of observations"),
-    filename: str = typer.Argument(..., help="STIX bundle file"),
+    filename: str = typer.Argument(..., help="STIX 2.0 bundle file"),
 ):
     """Truncate STIX bundle"""
     _start_bundle()
@@ -127,11 +127,7 @@ def limit(
     for obj in raft.get_objects(filename):
         if count > n:
             break
-        blob = json.dumps(obj, separators=(',', ':'))
-        if count:
-            sys.stdout.write(f',{blob}')
-        else:
-            sys.stdout.write(f'{blob}')
+        _dump_obj(obj, count)
         count += 1
     _end_bundle()
 
@@ -140,17 +136,74 @@ def limit(
 def upgrade(
     filename: str = typer.Argument(..., help="STIX bundle file"),
 ):
-    """Truncate STIX bundle"""
+    """Upgrade a STIX 2.0 bundle to 2.1"""
     _start_bundle('2.1')
     count = 0
     for obs in raft.get_objects(filename):
         for obj in raft.upgrade_2021(obs):
-            blob = json.dumps(obj, separators=(',', ':'))
-            if count:
-                sys.stdout.write(f',{blob}')
-            else:
-                sys.stdout.write(f'{blob}')
+            _dump_obj(obj, count)
             count += 1
+    _end_bundle()
+
+
+def _to_dt(timestamp):
+    return datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+
+
+@app.command()
+def timeshift(
+    filename: str = typer.Argument(..., help="STIX 2.0 bundle file"),
+    start: str = typer.Argument(..., help="new start time"),
+    end: str = typer.Argument(..., help="new end time"),
+):
+    """Randomize STIX observation IDs in a bundle"""
+    _start_bundle()
+    # Idea: 2 passes - first to get original timeframe, second to timeshift
+    orig_start = None  # _timefmt(datetime.datetime.utcnow())
+    orig_end = None
+    count = 0
+
+    # First pass: get original timeframe
+    for obj in raft.get_objects(filename):
+        if 'type' in obj:
+            obj_type = obj['type']
+            if obj_type == 'observed-data':
+                if count == 0:
+                    orig_start = obj['first_observed']
+                    orig_end = obj['first_observed']
+                else:
+                    orig_start = min(orig_start, obj['first_observed'])
+                    orig_end = max(orig_end, obj['first_observed'])
+                count += 1
+
+    # Compute original duration
+    ots0 = _to_dt(orig_start)
+    ots1 = _to_dt(orig_end)
+    orig_duration = ots1 - ots0
+
+    # Compute new duration
+    nts0 = _to_dt(start)
+    nts1 = _to_dt(end)
+    new_duration = nts1 - nts0
+
+    scale = new_duration / orig_duration
+
+    # Second pass: re-map timestamps
+    count = 0
+    for obj in raft.get_objects(filename):
+        if 'type' in obj:
+            obj_type = obj['type']
+            if obj_type == 'observed-data':
+                fo = _to_dt(obj['first_observed'])
+                pos = (fo - ots0)  # relative time in orig timeframe
+                shift = datetime.timedelta(seconds=pos.total_seconds() * scale)
+                new_fo = nts0 + shift
+                obj['first_observed'] = _timefmt(new_fo)
+                lo = _to_dt(obj['last_observed'])
+                dur = lo - fo
+                obj['last_observed'] = _timefmt(new_fo + dur * scale)
+        _dump_obj(obj, count)
+        count += 1
     _end_bundle()
 
 

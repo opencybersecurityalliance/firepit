@@ -316,9 +316,7 @@ def make_sro_21(obj):
                 for ref in val:
                     if ref != oid:  # Avoid bogus references
                         sro = {
-                            'id': f'relationship--{uuid.uuid4()}',
-                            'type': 'relationship',
-                            'relationship_type': prop,
+                            'type': '__reflist',
                             'source_ref': oid,
                             'target_ref': ref
                         }
@@ -382,9 +380,7 @@ def make_sro(obs):  # TODO: better name
                     if ref in scos and ref != idx:  # Avoid bogus references
                         # We'll replace these indices later
                         sro = {
-                            'id': f'relationship--{uuid.uuid4()}',
-                            'type': 'relationship',
-                            'relationship_type': prop,
+                            'type': '__reflist',
                             'source_ref': idx,
                             'target_ref': ref
                         }
