@@ -44,12 +44,12 @@ def makeid(sco):
             for hash_type in HASHES_PREF_LIST:
                 value = hashes.get(hash_type)
                 if value:
-                    contrib[f'hashes'] = {hash_type.strip("'"): value}
+                    contrib['hashes'] = {hash_type.strip("'"): value}
                     break
             else:
                 # None of the preferred hashes found
                 prop = sorted(list(hashes.keys()))[0]
-                contrib[f'hashes'] = {prop.strip("'"): hashes[prop]}
+                contrib['hashes'] = {prop.strip("'"): hashes[prop]}
         elif props[0] in sco:
             contrib[props[0]] = sco[props[0]]
 
@@ -64,7 +64,7 @@ def makeid(sco):
         # Others?
         # Use different namespace?
         pass
-        
+
     if contrib:
         name = ujson.dumps(contrib, sort_keys=True, ensure_ascii=False)
         oid = f'{sco_type}--{str(uuid.uuid5(ID_NAMESPACE, name))}'

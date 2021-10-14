@@ -426,8 +426,13 @@ class PgStorage(SqlStorage):
 
     def finish(self, index=True):
         if index:
+            cursor = self._query("SELECT table_name"
+                                 " FROM information_schema.tables"
+                                 " WHERE table_schema = %s"
+                                 "   AND table_name IN (%s, %s)", (self.session_id, '__contains', '__reflist'))
+            rows = cursor.fetchall()
+            tables = [i['table_name'] for i in rows]
             cursor = self._execute('BEGIN;')
-            tables = ['__contains', '__reflist']
             if 'relationship' in self.tables():
                 tables.append('relationship')
             for tablename in tables:

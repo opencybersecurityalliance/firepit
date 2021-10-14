@@ -396,6 +396,10 @@ class Query:
             self.tables.append(stage.name)
         self.stages.append(stage)
 
+    def extend(self, stages):
+        for stage in stages:
+            self.append(stage)
+
     def render(self, placeholder):
         if not self.tables:
             raise InvalidQuery("no table")  #TODO: better message

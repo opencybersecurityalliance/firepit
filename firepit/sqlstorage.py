@@ -3,7 +3,6 @@ import re
 import uuid
 
 import orjson
-import ujson
 
 from firepit import raft
 from firepit.exceptions import IncompatibleType
@@ -14,7 +13,6 @@ from firepit.props import auto_agg
 from firepit.props import auto_agg_tuple
 from firepit.props import parse_path
 from firepit.props import primary_prop
-from firepit.props import ref_type
 from firepit.query import Aggregation
 from firepit.query import Column
 from firepit.query import Filter
@@ -28,7 +26,6 @@ from firepit.query import Projection
 from firepit.query import Query
 from firepit.query import Table
 from firepit.splitter import SplitWriter
-from firepit.stix20 import path2sql
 from firepit.stix20 import stix2sql
 from firepit.stix21 import makeid
 from firepit.validate import validate_name
@@ -219,6 +216,30 @@ class SqlStorage:
         ## This is DB-specific
         raise NotImplementedError('Storage._is_sql_view')
 
+    def path_joins(self, viewname, sco_type, column):
+        """Determine if `column` has implicit Joins and return them if so"""
+        if not sco_type:
+            sco_type = self.table_type(viewname)
+        aliases = {sco_type: viewname}
+        links = parse_path(column)
+        target_table = column
+        target_column = column
+        results = []  # Query components to return
+        for link in links:
+            if link[0] == 'node':
+                target_table = link[1] or viewname
+                target_column = link[2]
+            elif link[0] == 'rel':
+                from_type = link[1] or viewname
+                ref_name = link[2]
+                to_type = link[3]
+                lhs = aliases.get(from_type, from_type)
+                alias, _, _ = ref_name.rpartition('_')
+                aliases[to_type] = alias
+                results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
+            target_table = aliases.get(target_table, target_table)
+        return results, target_table, target_column
+
     def _extract(self, viewname, sco_type, tablename, pattern, query_id=None):
         """Extract rows from `tablename` to create view `viewname`"""
         validate_name(viewname)
@@ -236,7 +257,6 @@ class SqlStorage:
                 where = clause
 
         # Need to convert viewname from identifier to string, so use single quotes
-        namestr = f"'{viewname}'"
         cursor = self._execute('BEGIN;')
         select = (f'SELECT * FROM "{sco_type}" WHERE "id" IN'
                   f' (SELECT "{sco_type}".id FROM "{sco_type}"'
@@ -332,18 +352,10 @@ class SqlStorage:
         if by:
             validate_path(by)
             sco_type, _, by = by.rpartition(':')
-            target_table = on
             target_column = by
             if by not in self.columns(on):
-                for link in parse_path(by):
-                    if link[0] == 'node':
-                        target_table = link[1]
-                        target_column = link[2]
-                    elif link[0] == 'rel':
-                        from_type = link[1] or on  # FIXME
-                        ref_name = link[2]
-                        to_type = link[3]
-                        query.append(Join(to_type, ref_name, '=', 'id'))
+                joins, _, target_column = self.path_joins(on, sco_type, by)
+                query.extend(joins)
         if op == 'sort':
             query.append(Order([(target_column, Order.ASC if ascending else Order.DESC)]))
             if limit:
@@ -514,7 +526,6 @@ class SqlStorage:
             result['type'] = sco_type
         return results
 
-
     def values(self, path, viewname):
         """Get the values of STIX object path `path` (a column) from `viewname`"""
         validate_path(path)
@@ -522,26 +533,8 @@ class SqlStorage:
         sco_type, _, column = path.rpartition(':')
         qry = Query(viewname)
         if column not in self.columns(viewname):
-            aliases = {}
-            if not sco_type:
-                sco_type = self.table_type(viewname)
-            links = parse_path(column)
-            target_table = column
-            target_column = column
-            for link in links:  #TODO: lift this out to new function
-                if link[0] == 'node':
-                    target_table = link[1] or viewname
-                    target_column = link[2]
-                elif link[0] == 'rel':
-                    from_type = link[1] or viewname  # FIXME
-                    ref_name = link[2]
-                    to_type = link[3]
-                    lhs = aliases.get(from_type, from_type)
-                    alias, _, _ = ref_name.rpartition('_')
-                    aliases[to_type] = alias
-                    qry.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
-            if target_table in aliases:
-                target_table = aliases[target_table]
+            joins, target_table, target_column = self.path_joins(viewname, sco_type, column)
+            qry.extend(joins)
             qry.append(Projection([Column(target_column, table=target_table, alias=column)]))
         else:
             qry.append(Projection([column]))
@@ -716,7 +709,7 @@ class SqlStorage:
 
         # if no aggs supplied, do "auto aggregation"
         if group_cols and not found_agg and sco_type:
-            group_colnames = set([c.name for c in group_cols])
+            group_colnames = {c.name for c in group_cols}
             aggs = []
             for col in self.schema(sco_type):  #viewname):
                 # Don't aggregate the columns we used for grouping
@@ -736,25 +729,27 @@ class SqlStorage:
         self.connection.commit()
         cursor.close()
 
-    def value_counts(self, sco_type, column):
+    def value_counts(self, viewname, path):
         """
-        Get the count of observations of each value in `viewname`.`column`
+        Get the count of observations of each value in `viewname`.`path`
         Returns list of dicts like {'{column}': '...', 'count': 1}
         """
-        qry = (f'SELECT sco."{column}", SUM(grouped.count) as count'
-               f' FROM (SELECT target_ref, COUNT(*) as count'
-               f' FROM __contains'
-               f' WHERE target_ref LIKE {self.placeholder}'
-               f' GROUP BY target_ref) AS grouped'
-               f' JOIN "{sco_type}" AS sco ON grouped.target_ref = sco.id'
-               f' GROUP BY sco."{column}"'
-               f' ORDER BY sco."{column}"')
-        cursor = self._query(qry, (f'{sco_type}--%',))
+        validate_name(viewname)
+        _, _, column = path.rpartition(':')
+
+        qry = Query([
+            Table(viewname),
+            Join('__contains', 'id', '=', 'target_ref'),
+            Join('observed-data', 'source_ref', '=', 'id'),
+            Group([column]),
+            Aggregation([('COUNT', '*', 'count')])
+        ])
+        cursor = self.run_query(qry)
         return cursor.fetchall()
 
-    def number_observed(self, viewname, column, value=None):
+    def number_observed(self, viewname, path, value=None):
         """
-        Get the count of observations of `value` in `viewname`.`column`
+        Get the count of observations of `value` in `viewname`.`path`
         Returns integer count
         """
         qry = Query([
@@ -762,16 +757,19 @@ class SqlStorage:
             Join('__contains', 'id', '=', 'target_ref'),
             Join('observed-data', 'source_ref', '=', 'id')
         ])
+        joins, _, col = self.path_joins(viewname, None, path)
+        qry.extend(joins)
         if value:
-            qry.append(Filter([Predicate(column, '=', value)]))
+            qry.append(Filter([Predicate(col, '=', value)]))
         qry.append(Aggregation([('SUM', 'number_observed', 'count')]))
         cursor = self.run_query(qry)
         res = cursor.fetchone()
-        return int(res['count']) if res else 0
+        count = res['count'] if res else 0
+        return int(count) if count else 0
 
-    def timestamped(self, viewname, column=None, value=None):
+    def timestamped(self, viewname, path=None, value=None):
         """
-        Get the timestamped observations of `value` in `viewname`.`column`
+        Get the timestamped observations of `value` in `viewname`.`path`
         Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
         """
 
@@ -787,6 +785,11 @@ class SqlStorage:
             Join('__contains', 'id', '=', 'target_ref'),
             Join('observed-data', 'source_ref', '=', 'id')
         ])
+        table = viewname
+        column = path
+        if path:
+            joins, table, column = self.path_joins(viewname, None, path)
+            qry.extend(joins)
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
         qry.append(Order(['first_observed']))
@@ -794,14 +797,14 @@ class SqlStorage:
             qry.append(
                 Projection([
                     Column('first_observed', 'observed-data', 'timestamp'),
-                    Column(column, viewname)
+                    Column(column, table)
                 ])
             )
         else:
             qry.append(
                 Projection([
                     Column('first_observed', 'observed-data', 'timestamp'),
-                    Column('*', viewname)
+                    Column('*', table)
                 ])
             )
         cursor = self.run_query(qry)

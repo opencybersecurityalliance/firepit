@@ -256,6 +256,7 @@ class SplitWriter:
                     self.writer.write_records(obj_type, recs, self.schemas[obj_type], self.replace, self.query_id)
 
 
+#TODO: remove this (maybe move into a command in cli.py?)
 if __name__ == '__main__':
     logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s: %(message)s', level=logging.DEBUG)
     import argparse
@@ -272,7 +273,7 @@ if __name__ == '__main__':
     if args.format == 'json':
         writer = JsonWriter(args.directory)
     elif args.format in ['sql', 'sqlite', 'sqlite3']:
-        from sqlitestorage import SQLiteStorage
+        from firepit.sqlitestorage import SQLiteStorage
         store = SQLiteStorage(args.dbname)
         writer = store._get_writer()  # SqlWriter(args.directory, store, prefix=args.prefix)
     else:
