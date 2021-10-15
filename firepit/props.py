@@ -137,14 +137,16 @@ def parse_path(path):
     sco_type, _, prop = path.rpartition(':')
     parts = prop.split('.')
     result = []
+    prev_type = sco_type
     for part in parts:
         if not is_ref(part):
-            result.append(('node', sco_type, part))
+            result.append(('node', prev_type, part))
+            prev_type = part
         else:
             cur_type = sco_type
             sco_type = ref_type(cur_type, part)
             if isinstance(sco_type, list):
                 sco_type = sco_type[0]  # FIXME: How should we handle lists?
             result.append(('rel', cur_type, part, sco_type))
-
+            prev_type = sco_type
     return result

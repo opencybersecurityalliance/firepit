@@ -73,7 +73,7 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     assert len(urls1) == 5
     urls2 = store.lookup('urls', limit=5, offset=2, cols="value")
     assert len(urls2) == 5
-    assert len(urls2[1].keys()) == 2
+    assert len(urls2[1].keys()) == 1
 
     store.assign('sorted', 'urls', op='sort', by='value')
     urls = store.values('url:value', 'sorted')
@@ -703,13 +703,13 @@ def test_timestamped(fake_bundle_file, tmpdir):
     store.extract('users', 'user-account', 'q1', "[ipv4-addr:value LIKE '10.%']")
     accounts = store.timestamped('users')
     assert len(accounts) == 100
-    assert 'timestamp' in accounts[0].keys()
+    assert 'first_observed' in accounts[0].keys()
     assert 'account_login' in accounts[0].keys()
     assert 'user_id' in accounts[0].keys()
     assert 'id' in accounts[0].keys()
     logins = store.timestamped('users', 'account_login')
     assert len(logins) == 100
-    assert set(logins[0].keys()) == {'timestamp', 'account_login'}
+    assert set(logins[0].keys()) == {'first_observed', 'account_login'}
     henry = store.timestamped('users', 'account_login', 'henry')
     assert len(henry) == len([i for i in logins if i['account_login'] == 'henry'])
     isabel = store.timestamped('users', 'account_login', 'isabel')

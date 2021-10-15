@@ -8,6 +8,7 @@ from firepit import raft
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidObject
+from firepit.exceptions import InvalidStixPath
 from firepit.exceptions import StixPatternError
 from firepit.props import auto_agg
 from firepit.props import auto_agg_tuple
@@ -222,22 +223,34 @@ class SqlStorage:
             sco_type = self.table_type(viewname)
         aliases = {sco_type: viewname}
         links = parse_path(column)
-        target_table = column
-        target_column = column
+        target_table = None
+        target_column = None
         results = []  # Query components to return
         for link in links:
+            print(link, target_table, target_column)
             if link[0] == 'node':
-                target_table = link[1] or viewname
-                target_column = link[2]
+                if not target_table:
+                    target_table = link[1] or viewname
+                if not target_column:
+                    print('Set tc =', link[2])
+                    target_column = link[2]
+                else:
+                    print('Append tc .', link[2])
+                    target_column += f'.{link[2]}'
             elif link[0] == 'rel':
                 from_type = link[1] or viewname
                 ref_name = link[2]
+                if target_column:
+                    target_column = None
                 to_type = link[3]
+                target_table = to_type
                 lhs = aliases.get(from_type, from_type)
                 alias, _, _ = ref_name.rpartition('_')
                 aliases[to_type] = alias
                 results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
+                print(results)
             target_table = aliases.get(target_table, target_table)
+        print(results, target_table, target_column)
         return results, target_table, target_column
 
     def _extract(self, viewname, sco_type, tablename, pattern, query_id=None):
@@ -511,10 +524,19 @@ class SqlStorage:
         if cols != "*":
             dbcols = self.columns(viewname)
             cols = cols.replace(" ", "").split(",")
+            proj = []
             for col in cols:
                 if col not in dbcols:
-                    raise InvalidAttr(f"{col}")
-            qry.append(Projection(cols))
+                    try:
+                        validate_path(col)
+                    except InvalidStixPath as e:
+                        raise InvalidAttr(f"{col}") from e
+                    joins, target_table, target_column = self.path_joins(viewname, None, col)
+                    qry.extend(joins)
+                    proj.append(Column(target_column, table=target_table, alias=col))
+                else:
+                    proj.append(col)
+            qry.append(Projection(proj))
         if limit:
             qry.append(Limit(limit))
         if offset:
@@ -522,8 +544,9 @@ class SqlStorage:
         sco_type = self.table_type(viewname) or viewname
         cursor = self.run_query(qry)
         results = cursor.fetchall()
-        for result in results:
-            result['type'] = sco_type
+        if 'type' in cols or cols == '*':
+            for result in results:
+                result['type'] = sco_type
         return results
 
     def values(self, path, viewname):
@@ -709,7 +732,7 @@ class SqlStorage:
 
         # if no aggs supplied, do "auto aggregation"
         if group_cols and not found_agg and sco_type:
-            group_colnames = {c.name for c in group_cols}
+            group_colnames = {c.name if hasattr(c, 'name') else c for c in group_cols}
             aggs = []
             for col in self.schema(sco_type):  #viewname):
                 # Don't aggregate the columns we used for grouping
@@ -767,7 +790,7 @@ class SqlStorage:
         count = res['count'] if res else 0
         return int(count) if count else 0
 
-    def timestamped(self, viewname, path=None, value=None):
+    def timestamped(self, viewname, path=None, value=None, timestamp='first_observed'):
         """
         Get the timestamped observations of `value` in `viewname`.`path`
         Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
@@ -792,22 +815,51 @@ class SqlStorage:
             qry.extend(joins)
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
-        qry.append(Order(['first_observed']))
+        qry.append(Order([timestamp]))
         if column:
             qry.append(
                 Projection([
-                    Column('first_observed', 'observed-data', 'timestamp'),
+                    Column(timestamp, 'observed-data'),
                     Column(column, table)
                 ])
             )
         else:
             qry.append(
                 Projection([
-                    Column('first_observed', 'observed-data', 'timestamp'),
+                    Column(timestamp, 'observed-data'),
                     Column('*', table)
                 ])
             )
         cursor = self.run_query(qry)
         res = cursor.fetchall()
+        cursor.close()
+        return res
+
+    def summary(self, viewname, path=None, value=None):
+        """
+        Get the first and last observed time and number observed for observations of `viewname`, optionally specifying `path` and `value`.
+        Returns list of dicts like {'first_observed': '2021-10-...', 'last_observed': '2021-10-...', 'number_observed': N}
+        """
+        qry = Query([
+            Table(viewname),
+            Join('__contains', 'id', '=', 'target_ref'),
+            Join('observed-data', 'source_ref', '=', 'id')
+        ])
+        table = viewname
+        column = path
+        if path:
+            joins, table, column = self.path_joins(viewname, None, path)
+            qry.extend(joins)
+        if column and value is not None:
+            qry.append(Filter([Predicate(column, '=', value)]))
+        qry.append(
+            Aggregation([
+                ('MIN', 'first_observed', 'first_observed'),
+                ('MAX', 'last_observed', 'last_observed'),
+                ('SUM', 'number_observed', 'number_observed'),
+            ])
+        )
+        cursor = self.run_query(qry)
+        res = cursor.fetchone()
         cursor.close()
         return res

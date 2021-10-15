@@ -340,11 +340,13 @@ def timestamped(
     name: str = typer.Argument(..., help="View name to look up"),
     column: str = typer.Argument(None, help="Column to tabulate"),
     value: str = typer.Option(None, help="Column value to filter for"),
+    timestamp: str = typer.Option('first_observed',
+                                  help="Timestamp to use [first_observed, last_observed]"),
     format: str = typer.Option('table', help="Output format [table, json]"),
 ):
     """Retrieve the timestamped values of a column from a view"""
     db = get_storage(state['dbname'], state['session'])
-    rows = db.timestamped(name, column, value)
+    rows = db.timestamped(name, column, value, timestamp)
     print_rows(rows, format)
 
 
