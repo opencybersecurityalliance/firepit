@@ -127,10 +127,13 @@ def lookup(
     limit: int = typer.Option(None, help="Max number of rows to return"),
     offset: int = typer.Option(0, help="Number of rows to skip"),
     format: str = typer.Option('table', help=format_help),
+    columns: str = typer.Option(None, help="List of columns to retrieve"),
 ):
     """Retrieve a view"""
     db = get_storage(state['dbname'], state['session'])
-    rows = db.lookup(name, limit=limit, offset=offset)
+    if not columns:
+        columns = '*'
+    rows = db.lookup(name, cols=columns, limit=limit, offset=offset)
     print_rows(rows, format)
 
 

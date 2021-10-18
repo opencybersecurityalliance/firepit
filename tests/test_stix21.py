@@ -4,7 +4,6 @@ import os
 import pytest
 from stix2 import parse
 
-from firepit.raft import get_objects
 from firepit.stix21 import makeid
 
 

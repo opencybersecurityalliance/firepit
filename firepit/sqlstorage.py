@@ -227,15 +227,12 @@ class SqlStorage:
         target_column = None
         results = []  # Query components to return
         for link in links:
-            print(link, target_table, target_column)
             if link[0] == 'node':
                 if not target_table:
                     target_table = link[1] or viewname
                 if not target_column:
-                    print('Set tc =', link[2])
                     target_column = link[2]
                 else:
-                    print('Append tc .', link[2])
                     target_column += f'.{link[2]}'
             elif link[0] == 'rel':
                 from_type = link[1] or viewname
@@ -248,9 +245,7 @@ class SqlStorage:
                 alias, _, _ = ref_name.rpartition('_')
                 aliases[to_type] = alias
                 results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
-                print(results)
             target_table = aliases.get(target_table, target_table)
-        print(results, target_table, target_column)
         return results, target_table, target_column
 
     def _extract(self, viewname, sco_type, tablename, pattern, query_id=None):
@@ -523,7 +518,8 @@ class SqlStorage:
         qry = Query(viewname)
         if cols != "*":
             dbcols = self.columns(viewname)
-            cols = cols.replace(" ", "").split(",")
+            if isinstance(cols, str):
+                cols = cols.replace(" ", "").split(",")
             proj = []
             for col in cols:
                 if col not in dbcols:
@@ -535,7 +531,7 @@ class SqlStorage:
                     qry.extend(joins)
                     proj.append(Column(target_column, table=target_table, alias=col))
                 else:
-                    proj.append(col)
+                    proj.append(Column(col, viewname))
             qry.append(Projection(proj))
         if limit:
             qry.append(Limit(limit))
@@ -863,3 +859,31 @@ class SqlStorage:
         res = cursor.fetchone()
         cursor.close()
         return res
+
+    def group(self, newname, viewname, by, aggs=None):
+        """Create new view `newname` defined by grouping `viewname` by `by`"""
+        if isinstance(by, str):
+            by = [by]
+        columns = self.columns(viewname)
+        group_colnames = []
+        qry = Query(viewname)
+        for col in by:
+            if col not in columns:
+                joins, table, colname = self.path_joins(viewname, None, col)
+                group_colnames.append(Column(colname, table, col))
+                qry.extend(joins)
+            else:
+                group_colnames.append(Column(col, viewname))
+        qry.append(Group(group_colnames))
+        if not aggs:
+            aggs = []
+            sco_type = self.table_type(viewname)
+            for col in self.schema(sco_type):
+                # Don't aggregate the columns we used for grouping
+                if col['name'] in group_colnames:
+                    continue
+                agg = auto_agg_tuple(sco_type, col['name'], col['type'])
+                if agg:
+                    aggs.append(agg)
+        qry.append(Aggregation(aggs))
+        self.assign_query(newname, qry)

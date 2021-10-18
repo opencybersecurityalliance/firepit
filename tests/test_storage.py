@@ -209,12 +209,12 @@ def test_ops(fake_bundle_file, tmpdir, sco_type, prop, op, value, expected, unex
         assert expected not in data
 
 
-def test_grouping(fake_bundle_file, fake_csv_file, tmpdir):
+def test_grouping(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])
 
     store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
-    store.assign('conns', 'conns', op='group', by='src_ref.value')
+    store.assign('conns', 'conns', op='group', by='src_ref.value')  # Deprecated
     srcs = store.values('src_ref.value', 'conns')
     assert srcs
 
@@ -228,7 +228,7 @@ def test_grouping_dst_port(fake_bundle_file, tmpdir):
     store.cache('q1', [fake_bundle_file])
 
     store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
-    store.assign('conns', 'conns', op='group', by='dst_port')
+    store.assign('conns', 'conns', op='group', by='dst_port')  # Deprecated
     srcs = store.values('dst_port', 'conns')
     assert srcs
 

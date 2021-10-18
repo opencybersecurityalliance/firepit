@@ -331,6 +331,19 @@ class Join:
         self.how = how
         self.alias = alias
 
+    def __repr__(self):
+        return f'Join({self.name}, {self.left_col}, {self.op}, {self.right_col}, {self.how}, {self.alias}, {self.prev_name})'
+
+    def __eq__(self, rhs):
+        return (
+            self.prev_name == rhs.prev_name and
+            self.name == rhs.name and
+            self.left_col == rhs.left_col and
+            self.op == rhs.op and
+            self.right_col == rhs.right_col and
+            self.how == rhs.how and
+            self.alias == rhs.alias)
+
     def render(self, placeholder):
         # Assume there's a FROM before this?
         target = f'"{self.name}"'
@@ -369,6 +382,9 @@ class Query:
         elif isinstance(stage, Join):
             # Need to look back and grab previous table name
             last = self.last_stage()
+            if isinstance(last, Join):
+                if last == stage:
+                    return  # It's redundant
             if isinstance(last, (Table, Join)):  #TODO: use table stack
                 if not stage.prev_name:
                     stage.prev_name = last.name
