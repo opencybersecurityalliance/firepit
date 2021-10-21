@@ -130,13 +130,15 @@ class PgStorage(SqlStorage):
             connstring,
             cursor_factory=psycopg2.extras.RealDictCursor)
 
+        self._create_firepit_common_schema()
         if session_id:
             try:
                 self._execute(f'CREATE SCHEMA IF NOT EXISTS "{session_id}";')
+                # how to check if schema exists
             except psycopg2.errors.UniqueViolation:
                 self.connection.rollback()
 
-        self._execute(f'SET search_path TO "{session_id}";')
+        self._execute(f'SET search_path TO "{session_id}", firepit_common;')
 
         stmt = ("SELECT (EXISTS (SELECT *"
                 " FROM INFORMATION_SCHEMA.TABLES"
@@ -149,18 +151,25 @@ class PgStorage(SqlStorage):
 
         logger.debug("Connection to PostgreSQL DB %s successful", dbname)
 
+    def _create_firepit_common_schema(self):
+        try:
+            self._execute(f'CREATE SCHEMA IF NOT EXISTS "firepit_common";')
+            cursor = self._execute('BEGIN;')
+            self._execute('''CREATE FUNCTION firepit_common.match(pattern TEXT, value TEXT)
+                            RETURNS boolean AS $$
+                                SELECT regexp_match(value, pattern) IS NOT NULL;
+                        $$ LANGUAGE SQL;''', cursor=cursor)
+            self._execute('''CREATE FUNCTION firepit_common.in_subnet(addr TEXT, net TEXT)
+                            RETURNS boolean AS $$
+                                SELECT addr::inet <<= net::inet;
+                        $$ LANGUAGE SQL;''', cursor=cursor)
+            cursor.close()
+        except psycopg2.errors.DuplicateFunction:
+            self.connection.rollback()
+
     def _setup(self):
         cursor = self._execute('BEGIN;')
         try:
-            self._execute('''CREATE FUNCTION match(pattern TEXT, value TEXT)
-                RETURNS boolean AS $$
-                    SELECT regexp_match(value, pattern) IS NOT NULL;
-            $$ LANGUAGE SQL;''', cursor=cursor)
-            self._execute('''CREATE FUNCTION in_subnet(addr TEXT, net TEXT)
-                RETURNS boolean AS $$
-                    SELECT addr::inet <<= net::inet;
-            $$ LANGUAGE SQL;''', cursor=cursor)
-
             # Do DB initization from base class
             stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
                     '(name TEXT, type TEXT, appdata TEXT);')
