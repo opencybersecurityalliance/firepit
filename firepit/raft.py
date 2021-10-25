@@ -285,7 +285,7 @@ def upgrade_2021(obs):
     return results
 
 
-def make_sro_21(obj):
+def make_sro_21(obj):  # TODO: better name
     """
     For STIX 2.1 objects, convert ref lists to SROs
     """
@@ -317,6 +317,7 @@ def make_sro_21(obj):
                     if ref != oid:  # Avoid bogus references
                         sro = {
                             'type': '__reflist',
+                            'ref_name': prop,
                             'source_ref': oid,
                             'target_ref': ref
                         }
@@ -381,6 +382,7 @@ def make_sro(obs):  # TODO: better name
                         # We'll replace these indices later
                         sro = {
                             'type': '__reflist',
+                            'ref_name': prop,
                             'source_ref': idx,
                             'target_ref': ref
                         }

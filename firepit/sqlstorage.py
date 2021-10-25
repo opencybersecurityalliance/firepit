@@ -704,13 +704,12 @@ class SqlStorage:
         # This is a DB-specific hook, but by default we'll do nothing
         pass
 
-    def assign_query(self, viewname, query):
+    def assign_query(self, viewname, query, sco_type=None):
         """
         Create a new view `viewname` defined by `query`
         """
         # Deduce SCO type and "deps" of viewname from query
         deps = []
-        sco_type = ''  # TODO: what to use for unknown type?
         group_cols = []
         group_pos = None
         found_agg = False
@@ -718,7 +717,8 @@ class SqlStorage:
             if isinstance(stage, Table):
                 # Assume first Table?  Might not work for complex queries or joins
                 on = stage.name
-                sco_type = self.table_type(on)
+                if not sco_type:
+                    sco_type = self.table_type(on)
                 deps = [on]
             elif isinstance(stage, Aggregation):
                 found_agg = True
@@ -742,7 +742,8 @@ class SqlStorage:
             query.stages.insert(group_pos, agg)  # Nasty
 
         query_text, query_values = query.render('{}')
-        stmt = query_text.format(query_values)
+        formatted_values = [f"'{v}'" if isinstance(v, str) else v for v in query_values]
+        stmt = query_text.format(*formatted_values)
         logger.debug('assign_query: %s', stmt)
         cursor = self._create_view(viewname, stmt, sco_type, deps=deps)
         self.connection.commit()

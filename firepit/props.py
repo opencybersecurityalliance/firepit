@@ -101,6 +101,8 @@ def ref_type(sco_type, part):
         return ['ipv4-addr', 'ipv6-addr']
     elif part == ['mac_refs']:  # x-oca-asset
         return ['mac-addr']
+    elif part == 'opened_connection_refs':
+        return ['network-traffic']
     elif sco_type == 'x-oca-event':
         if part == 'original_ref':
             return ['artifact']
