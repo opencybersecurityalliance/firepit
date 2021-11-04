@@ -285,6 +285,14 @@ def upgrade_2021(obs):
     return results
 
 
+def _rank(results, sco_id, rank):
+    """Set rank on __contains relationship for SCO"""
+    for result in results:
+        if result['type'] == '__contains' and result['target_ref'] == sco_id:
+            result['x_firepit_rank'] = 1
+
+
+
 def make_sro_21(obj):  # TODO: better name
     """
     For STIX 2.1 objects, convert ref lists to SROs
@@ -428,13 +436,13 @@ def make_sro(obs):  # TODO: better name
         if k and k not in reffed:
             # Check if there's a more preferred object
             if obj_type not in prefs:
-                scos[k]['x_root'] = 1
+                _rank(results, scos[k]['id'], 1)
             else:
                 for i in prefs[obj_type]:
                     if i in reffed:
                         continue
                     elif i == k:
-                        scos[k]['x_root'] = 1
+                        _rank(results, scos[k]['id'], 1)
                     break
 
     del obs['objects']
@@ -458,6 +466,7 @@ def _mark_tree(objs, k, reffed):
 
 def markroot(obj):
     """
+    DEPRECATED
     If a SCO type appears multiple times in one observation, attempt
     to mark one as the "primary", or most significant, instance by
     setting an "x_root" attribute to 1

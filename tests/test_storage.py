@@ -566,8 +566,7 @@ def test_three_ips(one_event_bundle, tmpdir):
     """A single Observation SDO can contain any arbitrary number and type
     of SCOs.  In the case that one type appears multiple times,
     firepit will attempt to mark one as the "primary", or most
-    significant, instance by setting an "x_root" attribute to 1 (note
-    that this name may change in the future).
+    significant, instance by setting an "x_firepit_rank" attribute to 1.
 
     A common case is `ipv4-addr`: if you have a `network-traffic`
     object, then you usally have 2 `ipv4-addr` (or `ipv6-addr`)
@@ -582,7 +581,9 @@ def test_three_ips(one_event_bundle, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [one_event_bundle])
 
-    results = store._query('SELECT value FROM "ipv4-addr" WHERE "x_root" IS NOT NULL')
+    results = store._query(('SELECT value FROM "ipv4-addr" i'
+                            ' JOIN __contains c on i.id = c.target_ref'
+                            ' WHERE c."x_firepit_rank" IS NOT NULL'))
     rows = results.fetchall()
     assert len(rows) == 1  # There can be only 1!!!
     assert rows[0]['value'] == '10.95.79.130'

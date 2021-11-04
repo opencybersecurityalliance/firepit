@@ -368,11 +368,11 @@ class PgStorage(SqlStorage):
         idx = None
         if 'id' in colnames:
             idx = colnames.index('id')
-            if tablename == 'identity':
-                action = 'NOTHING'
-            else:
+            action = 'NOTHING'
+            if tablename != 'identity':
                 excluded = self._get_excluded(colnames, tablename)
-                action = f'UPDATE SET {excluded}'
+                if excluded:
+                    action = f'UPDATE SET {excluded}'
             stmt += f' ON CONFLICT (id) DO {action}'
         values = []
         query_values = []
@@ -406,11 +406,11 @@ class PgStorage(SqlStorage):
         stmt = (f'INSERT INTO "{tablename}" ({valnames})'
                 f' SELECT {valnames} FROM tmp')
         if 'id' in colnames:
-            if tablename == 'identity':
-                action = 'NOTHING'
-            else:
+            action = 'NOTHING'
+            if tablename != 'identity':
                 excluded = self._get_excluded(colnames, tablename)
-                action = f'UPDATE SET {excluded}'
+                if excluded:
+                    action = f'UPDATE SET {excluded}'
             stmt += f'  ON CONFLICT (id) DO {action}'
         cursor.execute(stmt)
 

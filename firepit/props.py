@@ -88,7 +88,7 @@ def ref_type(sco_type, part):
         return ['ipv4-addr', 'ipv6-addr']
     elif sco_type in ['ipv4-addr', 'ipv6-addr'] and part == 'resolves_to_refs':
         return ['mac-addr']
-    elif part == 'binary_ref':
+    elif part in ['binary_ref', 'image_ref']:
         return ['file']
     elif part == 'parent_directory_ref':
         return ['directory']

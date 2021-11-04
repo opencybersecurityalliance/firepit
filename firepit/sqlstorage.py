@@ -297,10 +297,11 @@ class SqlStorage:
         placeholders = ', '.join([self.placeholder] * len(colnames))
         stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
         if 'id' in colnames:
-            stmt += f' ON CONFLICT (id) DO UPDATE SET {excluded}'
+            action = f'UPDATE SET {excluded}' if excluded else 'NOTHING'
+            stmt += f' ON CONFLICT (id) DO {action}'
         values = tuple([str(orjson.dumps(value), 'utf-8')
                         if isinstance(value, list) else value for value in obj])
-        logger.debug('_upsert: "%s"', stmt)
+        #logger.debug('_upsert: "%s", %s', stmt, values)
         cursor.execute(stmt, values)
 
         if query_id and 'id' in colnames:
@@ -459,17 +460,17 @@ class SqlStorage:
         validate_name(r_var)
         validate_path(l_on)
         validate_path(r_on)
-        l_cols = self.columns(l_var)
-        r_cols = self.columns(r_var)
+        l_cols = set(self.columns(l_var))
+        r_cols = set(self.columns(r_var))
         l_type, _, l_on = l_on.rpartition(':')
         r_type, _, r_on = r_on.rpartition(':')
         cols = set()
-        for col in l_cols:
+        for col in l_cols - r_cols:
+            cols.add(f'{l_var}."{col}" AS "{col}"')
+        for col in l_cols & r_cols:
             cols.add(f'{self.ifnull}({l_var}."{col}", {r_var}."{col}") AS "{col}"')
-        for col in r_cols:
-            # Only add if not already added from left
-            if col not in l_cols:
-                cols.add(f'{r_var}."{col}" as "{col}"')
+        for col in r_cols - l_cols:
+            cols.add(f'{r_var}."{col}" as "{col}"')
         scols = ', '.join(cols)
         stmt = (f'SELECT {scols} FROM'
                 f' {l_var} INNER JOIN {r_var}'
