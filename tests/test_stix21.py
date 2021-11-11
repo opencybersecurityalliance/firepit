@@ -33,8 +33,9 @@ def pytest_generate_tests(metafunc):
 
 
 def test_simple(sco21):
-    orig_id = sco21['id']
+    # The example IDs are incorrect!
+    # Use the official stix2 package to generate a valid ID
     sco = parse(json.dumps({k: v for k, v in sco21.items() if k != 'id'}))
-    my_id = makeid(sco21)
-    print(orig_id, sco.id, my_id)
-    assert makeid(sco21) == sco.id    
+
+    # Check that our generated ID matches what came out of the stix2 package
+    assert makeid(sco21) == sco.id
