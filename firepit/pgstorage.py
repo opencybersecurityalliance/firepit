@@ -206,6 +206,10 @@ class PgStorage(SqlStorage):
         except psycopg2.errors.UndefinedTable as e:
             self.connection.rollback()
             raise UnknownViewname(str(e)) from e
+        except Exception as e:
+            self.connection.rollback()
+            logger.error('%s: %s', query, e, exc_info=e)
+            raise UnexpectedError(str(e)) from e
         self.connection.commit()
         return cursor
 

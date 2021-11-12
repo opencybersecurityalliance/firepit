@@ -34,36 +34,23 @@ ID_PROPS = {
 def makeid(sco):
     sco_type = sco['type']
     contrib = {}  # the ID contributing properties
-    props = ID_PROPS.get(sco_type)
-    if props:
-        num = len(props)
-
-        # hashes is a special case.  Choose first hash according to spec.
-        hashes = sco.get('hashes')
-        if props[0] == 'hashes' and hashes:
-            for hash_type in HASHES_PREF_LIST:
-                value = hashes.get(hash_type)
-                if value:
-                    contrib['hashes'] = {hash_type.strip("'"): value}
-                    break
-            else:
-                # None of the preferred hashes found
-                prop = sorted(list(hashes.keys()))[0]
-                contrib['hashes'] = {prop.strip("'"): hashes[prop]}
-        elif props[0] in sco:
-            contrib[props[0]] = sco[props[0]]
-
-        for i in range(1, num):
-            if props[i] in sco:
-                contrib[props[i]] = sco[props[i]]
-
-    elif sco_type == 'process':
-        # Special non-STIX 2.1 case for process?
-        # Could include name, pid, created_by_ref (might help), some timestamp?
-        # CbR: x_unique_id
-        # Others?
-        # Use different namespace?
-        pass
+    props = ID_PROPS.get(sco_type, [])
+    for prop in props:
+        if prop == 'hashes':
+            # hashes is a special case.  Choose first hash according to spec.
+            hashes = sco.get('hashes')
+            if hashes:
+                for hash_type in HASHES_PREF_LIST:
+                    value = hashes.get(hash_type)
+                    if value:
+                        contrib['hashes'] = {hash_type.strip("'"): value}
+                        break
+                else:
+                    # None of the preferred hashes found
+                    prop = sorted(list(hashes.keys()))[0]
+                    contrib['hashes'] = {prop.strip("'"): hashes[prop]}
+        elif prop in sco:
+            contrib[prop] = sco[prop]
 
     if contrib:
         name = ujson.dumps(contrib, sort_keys=True, ensure_ascii=False)

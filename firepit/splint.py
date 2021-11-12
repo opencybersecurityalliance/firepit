@@ -156,7 +156,7 @@ def timeshift(
     start: str = typer.Argument(..., help="new start time"),
     end: str = typer.Argument(..., help="new end time"),
 ):
-    """Randomize STIX observation IDs in a bundle"""
+    """Timeshift STIX observations in a bundle"""
     _start_bundle()
     # Idea: 2 passes - first to get original timeframe, second to timeshift
     orig_start = None  # _timefmt(datetime.datetime.utcnow())

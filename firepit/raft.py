@@ -4,8 +4,6 @@
 Raft: Streaming processing of STIX Observation SDOs (`observed-data`).
 """
 
-import uuid
-
 from collections import OrderedDict
 from collections import defaultdict
 
@@ -64,7 +62,8 @@ def _yield_objects(bundle, types):
 def get_objects(source, types=None):
     '''A generator function that yields STIX objects from source'''
     if isinstance(source, dict):
-        yield from _yield_objects(source, types)
+        for obj in source.get('objects', []):
+            yield obj
     elif source.startswith('http'):
         response = requests.get(source, stream=True)
         fp = GeneratorIO(response.iter_content(chunk_size=8192))
@@ -85,7 +84,7 @@ def _is_custom_prop(prop):
     return prop.startswith('x_')
 
 
-def _set_id(idx, obs):
+def _set_id(obs):
     sid = stix21.makeid(obs)
     obs['id'] = sid
     return sid
@@ -111,7 +110,7 @@ def promote(obj):
             for prop in ['first_observed', 'last_observed', 'number_observed']:
                 if prop in obj:
                     obs[prop] = obj[prop]
-            uid = _set_id(idx, obs)
+            uid = _set_id(obs)
             for prop, val in obs.items():
                 if prop.endswith('_ref') or prop.endswith('_refs'):
                     if not isinstance(val, list):
@@ -144,7 +143,7 @@ def makeid(obj):
     '''
     observables = obj.get('objects', {})
     for idx, obs in observables.items():
-        _set_id(idx, obs)
+        _set_id(obs)
     return obj
 
 
@@ -255,7 +254,7 @@ def upgrade_2021(obs):
     ref_map = {}
     for idx, sco in scos.items():
         # Assign a STIX 2.1-style identifier
-        sid = _set_id(idx, sco)
+        sid = _set_id(sco)
         ref_map[idx] = sid
         object_refs.add(sid)
         sco['spec_version'] = '2.1'
@@ -354,13 +353,14 @@ def make_sro(obs):  # TODO: better name
     # Keep track of the preference order of each reffed object, by type
     prefs = defaultdict(list)
     reffed = set()
-    
+
     for idx, sco in scos.items():
         # Put SCO at end of pref list
         prefs[sco['type']].append(idx)
-        
+
         # Assign a STIX 2.1-style identifier
-        sid = _set_id(idx, sco)
+        sid = stix21.makeid(sco)
+        sco['id'] = sid
         ref_map[idx] = sid
 
         # Create SRO for ref lists
@@ -412,7 +412,7 @@ def make_sro(obs):  # TODO: better name
             'source_ref': obs['id'],
             'target_ref': sco['id']
         })
-        
+
         # calc distance?
 
         #TODO: if sco in results already, update?
@@ -480,7 +480,7 @@ def markroot(obj):
     # Keep track of the preference order of each reffed object, by type
     prefs = defaultdict(list)
     for idx, sco in objs.items():
-        _set_id(idx, sco)
+        _set_id(sco)
         prefs[sco['type']].append(idx)
         for attr, val in sco.items():
             if attr.endswith('_ref'):

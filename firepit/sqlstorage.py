@@ -3,6 +3,7 @@ import re
 import uuid
 
 import orjson
+import ujson
 
 from firepit import raft
 from firepit.exceptions import IncompatibleType
@@ -37,23 +38,10 @@ logger = logging.getLogger(__name__)
 
 def _transform(filename):
     for obj in raft.get_objects(filename):  #, ['identity', 'observed-data']):
-        #if obj['type'] == 'observed-data':
         if obj['type'] != 'identity':
-            # obj['x_stix'] = ujson.dumps(obj)  # raft.preserve
-            # obj = raft.invert(obj)
-            # obj = raft.markroot(obj)  # Also does raft.makeid now
-            # observables = obj.get('objects', {})
-            # # Inlined below: obj = raft.nest(obj)
-            # object_refs = []
-            # for obs_orig in observables.values():
-            #     object_refs.append(raft._resolve(obs_orig, observables))
-            # obj['objects'] = object_refs
-            # objs = raft.promote(obj)
-            # Inlined below: raft.normalize
-            objs = raft.make_sro(obj)
-            objs = [raft.json_normalize(obj, flat_lists=False) for obj in objs]
-            for obj in objs:
-                yield obj
+            obj['x_stix'] = ujson.dumps(obj)  # raft.preserve
+            for o in (raft.json_normalize(obj, flat_lists=False) for obj in raft.make_sro(obj)):
+                yield o
         else:
             yield obj
 
@@ -301,7 +289,7 @@ class SqlStorage:
             stmt += f' ON CONFLICT (id) DO {action}'
         values = tuple([str(orjson.dumps(value), 'utf-8')
                         if isinstance(value, list) else value for value in obj])
-        #logger.debug('_upsert: "%s", %s', stmt, values)
+        #logger.debug('_upsert: obj=%s cols=%s schema=%s "%s", %s', obj, colnames, schema, stmt, values)
         cursor.execute(stmt, values)
 
         if query_id and 'id' in colnames:
