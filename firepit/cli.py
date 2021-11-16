@@ -170,7 +170,7 @@ def views():
 @app.command()
 def viewdata(
     views: List[str] = typer.Argument(None, help="Views to merge"),
-    format: str = typer.Option('table', help="Output format [table, json]"),
+    format: str = typer.Option('table', help=format_help),
 ):
     """Get view data for views [default is all views]"""
     db = get_storage(state['dbname'], state['session'])
@@ -319,7 +319,7 @@ def rename(
 def value_counts(
     name: str = typer.Argument(..., help="View name to look up"),
     column: str = typer.Argument(..., help="Column to tabulate"),
-    format: str = typer.Option('table', help="Output format [table, json]"),
+    format: str = typer.Option('table', help=format_help),
 ):
     """Retrieve the value counts of a column from a view"""
     db = get_storage(state['dbname'], state['session'])
@@ -345,12 +345,25 @@ def timestamped(
     value: str = typer.Option(None, help="Column value to filter for"),
     timestamp: str = typer.Option('first_observed',
                                   help="Timestamp to use [first_observed, last_observed]"),
-    format: str = typer.Option('table', help="Output format [table, json]"),
+    format: str = typer.Option('table', help=format_help),
 ):
     """Retrieve the timestamped values of a column from a view"""
     db = get_storage(state['dbname'], state['session'])
     rows = db.timestamped(name, column, value, timestamp)
     print_rows(rows, format)
+
+
+@app.command()
+def summary(
+    name: str = typer.Argument(..., help="View name to look up"),
+    column: str = typer.Argument(None, help="Column to tabulate"),
+    value: str = typer.Option(None, help="Column value to filter for"),
+    format: str = typer.Option('table', help=format_help),
+):
+    """Retrieve timeframe and count from a view"""
+    db = get_storage(state['dbname'], state['session'])
+    row = db.summary(name, column, value)
+    print_rows([row], format)
 
 
 if __name__ == "__main__":

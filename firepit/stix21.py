@@ -31,7 +31,7 @@ ID_PROPS = {
 }
 
 
-def makeid(sco):
+def makeid(sco, obs=None):
     sco_type = sco['type']
     contrib = {}  # the ID contributing properties
     props = ID_PROPS.get(sco_type, [])
@@ -50,7 +50,14 @@ def makeid(sco):
                     prop = sorted(list(hashes.keys()))[0]
                     contrib['hashes'] = {prop.strip("'"): hashes[prop]}
         elif prop in sco:
-            contrib[prop] = sco[prop]
+            value = sco[prop]
+            if prop.endswith('_ref') and obs:  # Hook for STIX 2.0 SCOs
+                target = obs['objects'].get(value)
+                if target:
+                    value = makeid(target)
+                    contrib[prop] = value
+            else:
+                contrib[prop] = value
 
     if contrib:
         name = ujson.dumps(contrib, sort_keys=True, ensure_ascii=False)

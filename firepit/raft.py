@@ -267,15 +267,21 @@ def upgrade_2021(obs):
 
         for prop, val in obj.items():
             if prop.endswith('_ref'):
-                ref = obj[prop]
-                obj[prop] = ref_map.get(val, ref)
+                if val.isdigit():
+                    obj[prop] = ref_map[val]
             elif prop.endswith('_refs'):
+                refs = []
                 if isinstance(val, list):
                     for i in val:
-                        obj[prop] = ref_map.get(i, i)
+                        if i.isdigit():
+                            refs.append(ref_map[i])
                 else:
-                    ref = obj[prop]
-                    obj[prop] = [ref_map.get(val, ref)]
+                    if val.isdigit():
+                        refs.append(ref_map[val])
+                if refs:
+                    obj[prop] = refs
+                else:
+                    del obj[prop]
 
     del obs['objects']
     obs['object_refs'] = list(object_refs)
@@ -359,7 +365,7 @@ def make_sro(obs):  # TODO: better name
         prefs[sco['type']].append(idx)
 
         # Assign a STIX 2.1-style identifier
-        sid = stix21.makeid(sco)
+        sid = stix21.makeid(sco, obs)
         sco['id'] = sid
         ref_map[idx] = sid
 

@@ -540,7 +540,8 @@ def test_port_zero(fake_bundle_file_2, tmpdir):
     store.assign('sconns', 'conns', op='sort', by='src_port')
     conns = store.lookup('sconns')
     assert conns[0]['src_port'] == 0
-    assert conns[0]['id'] == 'network-traffic--6ecfde62-7543-5fea-94bf-0e6bb30fdaff'
+    assert conns[0]['id'] == 'network-traffic--637791d8-c981-5a1e-9714-f0c4cfcb736b'
+    assert conns[0]['start'] == '2020-06-30T19:25:09.447726Z'
 
 
 def test_duplicate_identity(fake_bundle_list, tmpdir):
