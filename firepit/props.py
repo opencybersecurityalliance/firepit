@@ -17,7 +17,8 @@ def primary_prop(sco_type):
     if sco_type == 'user-account':
         prop = 'user_id'
     elif sco_type in ['file', 'mutex', 'process',
-                      'software', 'windows-registry-value-type']:
+                      'software', 'windows-registry-value-type',
+                      'x-ibm-finding']:
         prop = 'name'
     elif sco_type == 'directory':
         prop = 'path'
@@ -27,6 +28,10 @@ def primary_prop(sco_type):
         prop = 'key'
     elif sco_type == 'x509-certificate':
         prop = 'serial_number'
+    elif sco_type == 'x-oca-asset':
+        prop = 'hostname'
+    elif sco_type == 'x-oca-event':
+        prop = 'action'
     return prop
 
 
