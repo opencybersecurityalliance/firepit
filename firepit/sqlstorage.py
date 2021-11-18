@@ -11,6 +11,7 @@ from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidObject
 from firepit.exceptions import InvalidStixPath
 from firepit.exceptions import StixPatternError
+from firepit.exceptions import UnknownViewname
 from firepit.props import auto_agg
 from firepit.props import auto_agg_tuple
 from firepit.props import parse_path
@@ -845,9 +846,20 @@ class SqlStorage:
                 ('SUM', 'number_observed', 'number_observed'),
             ])
         )
-        cursor = self.run_query(qry)
-        res = cursor.fetchone()
-        cursor.close()
+        try:
+            cursor = self.run_query(qry)
+            res = cursor.fetchone()
+            cursor.close()
+        except UnknownViewname as e:
+            # Probably __contains, if no observed-data has been loaded
+            logger.warning('Missing table: %s', e)
+            res = None
+        except InvalidAttr:
+            # Probably a "grouped"/aggregate POD table (no id)
+            res = None
+        if not res:
+            c = self.count(viewname)
+            res = {'first_observed': None, 'last_observed': None, 'number_observed': c}
         return res
 
     def group(self, newname, viewname, by, aggs=None):
