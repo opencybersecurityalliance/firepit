@@ -258,6 +258,8 @@ def upgrade_2021(obs):
         ref_map[idx] = sid
         object_refs.add(sid)
         sco['spec_version'] = '2.1'
+        if 'binary_ref' in sco:
+            sco['image_ref'] = sco.pop('binary_ref')
         results.append(sco)
 
     # Resolve 2.0-style refs to new style

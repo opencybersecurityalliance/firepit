@@ -33,13 +33,12 @@ def _timefmt(ts):
     return ts.strftime(TIME_FMT)[:-3] + 'Z'
 
 
-def _start_bundle(spec_version='2.0'):
+def _start_bundle():
     bundle_id = 'bundle--' + str(uuid.uuid4())
     sys.stdout.write('{"type":"bundle",'
                      '"id": "')
-    sys.stdout.write(bundle_id + '",')
-    sys.stdout.write(f'"spec_version":"{spec_version}",'
-                     '"objects":[')
+    sys.stdout.write(bundle_id)
+    sys.stdout.write('","objects":[')
 
 
 def _dump_obj(obj, count):
@@ -137,7 +136,7 @@ def upgrade(
     filename: str = typer.Argument(..., help="STIX bundle file"),
 ):
     """Upgrade a STIX 2.0 bundle to 2.1"""
-    _start_bundle('2.1')
+    _start_bundle()
     count = 0
     for obs in raft.get_objects(filename):
         for obj in raft.upgrade_2021(obs):
