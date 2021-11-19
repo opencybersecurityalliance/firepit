@@ -52,6 +52,8 @@ def infer_type(key, value):
         rtype = 'TEXT UNIQUE'
     elif key == 'number_observed':
         rtype = 'NUMERIC'
+    elif key == 'ipfix.flowId':
+        rtype = 'TEXT'  # Should be uint64
     elif isinstance(value, int):
         rtype = 'NUMERIC'
     elif isinstance(value, float):
@@ -286,11 +288,14 @@ class SqlStorage:
         placeholders = ', '.join([self.placeholder] * len(colnames))
         stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
         if 'id' in colnames:
-            action = f'UPDATE SET {excluded}' if excluded else 'NOTHING'
+            if excluded and tablename != 'observed-data':
+                action = f'UPDATE SET {excluded}'
+            else:
+                action = 'NOTHING'
             stmt += f' ON CONFLICT (id) DO {action}'
         values = tuple([str(orjson.dumps(value), 'utf-8')
                         if isinstance(value, list) else value for value in obj])
-        #logger.debug('_upsert: obj=%s cols=%s schema=%s "%s", %s', obj, colnames, schema, stmt, values)
+        logger.debug('_upsert: "%s", %s', stmt, values)
         cursor.execute(stmt, values)
 
         if query_id and 'id' in colnames:
