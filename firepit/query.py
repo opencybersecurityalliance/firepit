@@ -454,7 +454,7 @@ class Query:
                 else:
                     query = f'SELECT {text} {query}'
             elif isinstance(stage, Unique):
-                if isinstance(prev, Projection):
+                if query.startswith('SELECT '):
                     query = re.sub(r'^SELECT ', 'SELECT DISTINCT ', query)
                 else:
                     query = f'SELECT DISTINCT * {query}'
