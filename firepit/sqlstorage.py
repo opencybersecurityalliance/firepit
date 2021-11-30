@@ -50,12 +50,14 @@ def _transform(filename):
 def infer_type(key, value):
     if key == 'id':
         rtype = 'TEXT UNIQUE'
-    elif key == 'number_observed':
-        rtype = 'NUMERIC'
+    elif key == 'src_port':
+        rtype = 'INTEGER'
+    elif key == 'dst_port':
+        rtype = 'INTEGER'
     elif key == 'ipfix.flowId':
-        rtype = 'TEXT'  # Should be uint64
+        rtype = 'TEXT'  # Should be uint64, but that's not supported anywhere!
     elif isinstance(value, int):
-        rtype = 'NUMERIC'
+        rtype = 'BIGINT'
     elif isinstance(value, float):
         rtype = 'REAL'
     elif isinstance(value, list):
@@ -562,7 +564,7 @@ class SqlStorage:
         stmt = f'SELECT COUNT(*) FROM "{viewname}"'
         cursor = self._query(stmt)
         res = cursor.fetchone()
-        return list(res.values())[0] if res else 0
+        return int(list(res.values())[0]) if res else 0
 
     def tables(self):
         """Get all table names"""
@@ -762,6 +764,21 @@ class SqlStorage:
         cursor = self.run_query(qry)
         return cursor.fetchall()
 
+    def _query_one(self, qry):
+        # Utility func for `number_observed()` and `summary()`
+        try:
+            cursor = self.run_query(qry)
+            res = cursor.fetchone()
+            cursor.close()
+        except UnknownViewname as e:
+            # Probably __contains, if no observed-data has been loaded
+            logger.warning('Missing table: %s', e)
+            res = None
+        except InvalidAttr:
+            # Probably a "grouped"/aggregate POD table (no id)
+            res = None
+        return res
+
     def number_observed(self, viewname, path, value=None):
         """
         Get the count of observations of `value` in `viewname`.`path`
@@ -777,10 +794,12 @@ class SqlStorage:
         if value:
             qry.append(Filter([Predicate(col, '=', value)]))
         qry.append(Aggregation([('SUM', 'number_observed', 'count')]))
-        cursor = self.run_query(qry)
-        res = cursor.fetchone()
-        count = res['count'] if res else 0
-        return int(count) if count else 0
+        res = self._query_one(qry)
+        if res:
+            count = int(res['count'])
+        else:
+            count = self.count(viewname)
+        return count
 
     def timestamped(self, viewname, path=None, value=None, timestamp='first_observed'):
         """
@@ -851,20 +870,14 @@ class SqlStorage:
                 ('SUM', 'number_observed', 'number_observed'),
             ])
         )
-        try:
-            cursor = self.run_query(qry)
-            res = cursor.fetchone()
-            cursor.close()
-        except UnknownViewname as e:
-            # Probably __contains, if no observed-data has been loaded
-            logger.warning('Missing table: %s', e)
-            res = None
-        except InvalidAttr:
-            # Probably a "grouped"/aggregate POD table (no id)
-            res = None
+        res = self._query_one(qry)
         if not res:
             c = self.count(viewname)
             res = {'first_observed': None, 'last_observed': None, 'number_observed': c}
+        elif res['number_observed'] is not None:
+            res['number_observed'] = int(res['number_observed'])  # Convert form Decimal
+        else:
+            res['number_observed'] = 0
         return res
 
     def group(self, newname, viewname, by, aggs=None):

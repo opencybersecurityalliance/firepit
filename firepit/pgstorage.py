@@ -242,7 +242,7 @@ class PgStorage(SqlStorage):
             self.connection.rollback()
 
     def _create_empty_view(self, viewname, cursor):
-        cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as type WHERE 1<>1;')
+        cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as id WHERE 1<>1;')
 
     def _create_view(self, viewname, select, sco_type, deps=None, cursor=None):
         """Overrides parent"""
@@ -295,11 +295,27 @@ class PgStorage(SqlStorage):
         viewdef = cursor.fetchone()
         if viewdef:
             stmt = viewdef['definition'].rstrip(';')
-
             # PostgreSQL will "expand" the original "*" to the columns
             # that existed at that time.  We need to get the star back, to
             # match SQLite3's behavior.
-            return re.sub(r'^.*?FROM', 'SELECT * FROM', stmt, 1, re.DOTALL)
+            logger.debug('"unexpand" stmt %s', stmt)
+            proj, sep, rest = stmt.replace('\n', '').partition('FROM')
+            result = []
+            for part in proj.split(' '):
+                part = part.strip()
+                if part.endswith(','):
+                    continue
+                if part == '':
+                    continue
+                if '.' in part:
+                    table, _, _ = part.partition('.')
+                    part = f'{table}.*'
+                result.append(part.strip('\n'))
+
+            if sep:
+                result.append('FROM')
+                result.append(rest)
+            return ' '.join(result)
 
         # Must be a table
         return f'SELECT * FROM "{viewname}"'
