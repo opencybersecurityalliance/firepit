@@ -108,6 +108,8 @@ def ref_type(sco_type, part):
         return ['mac-addr']
     elif part == 'opened_connection_refs':
         return ['network-traffic']
+    elif part in ['src_payload_ref', 'dst_payload_ref']:
+        return ['artifact']
     elif sco_type == 'x-oca-event':
         if part == 'original_ref':
             return ['artifact']
