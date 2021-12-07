@@ -22,7 +22,7 @@ ID_PROPS = {
     'mac-addr': ('value',),
     'mutex': ('name',),
     'network-traffic': ('start', 'end', 'src_ref', 'dst_ref', 'src_port', 'dst_port', 'protocols', 'extensions'),
-    'process': tuple(),  # !!!
+    'process': ('x_unique_id',),  # This is non-standard, obviously
     'software': ('name', 'cpe', 'swid', 'vendor', 'version'),
     'url': ('value',),
     'user-account': ('account_type', 'user_id', 'account_login'),
