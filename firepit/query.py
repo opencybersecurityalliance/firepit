@@ -79,6 +79,22 @@ class Column:
         return result
 
 
+class CoalescedColumn:
+    """First non-null column from a list - used after a JOIN"""
+
+    def __init__(self, names, alias):
+        for name in names:
+            _validate_column_name(name)
+        validate_path(alias)
+        self.names = names
+        self.alias = alias
+
+    def __str__(self):
+        result = ', '.join([name for name in self.names])
+        result = f'COALESCE({result}) AS "{self.alias}"'
+        return result
+
+
 class Predicate:
     """Simple row value predicate"""
 
