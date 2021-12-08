@@ -208,7 +208,7 @@ class SplitWriter:
             add_table = True
         new_obj = {}
         for key, value in obj.items():
-            if len(key) > 63 or key == 'type':
+            if len(key) > 63 or key in ['type', 'spec_version']:
                 continue
             new_obj[key] = value
             if key not in schema:
