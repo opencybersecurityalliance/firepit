@@ -1,0 +1,630 @@
+{
+  "type": "bundle",
+  "id": "bundle--9dbd53d8-9dd6-432b-ab11-4c934ec2922c",
+  "spec_version": "2.0",
+  "objects": [
+    {
+      "type": "identity",
+      "identity_class": "program",
+      "name": "mordor2stix",
+      "id": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "created": "2021-10-12T13:01:31.769Z",
+      "modified": "2021-10-12T13:01:31.769Z"
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--b3ed6cd2-286c-4795-96ba-6565438bb421",
+      "created": "2021-10-12T13:01:31.769Z",
+      "modified": "2021-10-12T13:01:31.769Z",
+      "first_observed": "2019-11-16T12:55:28.101Z",
+      "last_observed": "2019-11-16T12:55:28.101Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152949",
+          "process_ref": 1,
+          "network_ref": 5,
+          "host_ref": 7
+        },
+        "1": {
+          "type": "process",
+          "name": "svchost.exe",
+          "binary_ref": "2",
+          "pid": 1380,
+          "x_unique_id": "{7f07c11c-c0d7-5dcb-0000-001042920400}",
+          "opened_connection_refs": [
+            "5"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "svchost.exe",
+          "parent_directory_ref": "3"
+        },
+        "3": {
+          "type": "directory",
+          "path": "C:\\Windows\\System32"
+        },
+        "4": {
+          "type": "ipv4-addr",
+          "value": "192.168.1.156"
+        },
+        "5": {
+          "type": "network-traffic",
+          "src_ref": "4",
+          "dst_ref": "6",
+          "protocols": [
+            "tcp"
+          ],
+          "src_port": 60842,
+          "dst_port": 47413
+        },
+        "6": {
+          "type": "ipv4-addr",
+          "value": "192.168.1.1"
+        },
+        "7": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--5e1f2e58-6c19-412c-81bd-e5151eb5ce49",
+      "created": "2021-10-12T13:01:31.769Z",
+      "modified": "2021-10-12T13:01:31.769Z",
+      "first_observed": "2019-11-16T12:55:28.883Z",
+      "last_observed": "2019-11-16T12:55:28.883Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152950",
+          "process_ref": 1,
+          "network_ref": 5,
+          "host_ref": 7
+        },
+        "1": {
+          "type": "process",
+          "name": "svchost.exe",
+          "binary_ref": "2",
+          "pid": 1352,
+          "x_unique_id": "{7f07c11c-c0d7-5dcb-0000-001076900400}",
+          "opened_connection_refs": [
+            "5"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "svchost.exe",
+          "parent_directory_ref": "3"
+        },
+        "3": {
+          "type": "directory",
+          "path": "C:\\Windows\\System32"
+        },
+        "4": {
+          "type": "ipv4-addr",
+          "value": "127.0.0.1"
+        },
+        "5": {
+          "type": "network-traffic",
+          "src_ref": "4",
+          "dst_ref": "6",
+          "protocols": [
+            "tcp"
+          ],
+          "src_port": 60843,
+          "dst_port": 5357
+        },
+        "6": {
+          "type": "ipv4-addr",
+          "value": "127.0.0.1"
+        },
+        "7": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--335a1924-54fa-4edb-a4a6-424a98db313f",
+      "created": "2021-10-12T13:01:31.770Z",
+      "modified": "2021-10-12T13:01:31.770Z",
+      "first_observed": "2019-11-16T12:55:28.883Z",
+      "last_observed": "2019-11-16T12:55:28.883Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152951",
+          "process_ref": 1,
+          "network_ref": 4,
+          "host_ref": 6
+        },
+        "1": {
+          "type": "process",
+          "name": "System",
+          "binary_ref": "2",
+          "pid": 4,
+          "x_unique_id": "{7f07c11c-c0b9-5dcb-0000-0010eb030000}",
+          "opened_connection_refs": [
+            "4"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "System"
+        },
+        "3": {
+          "type": "ipv4-addr",
+          "value": "127.0.0.1"
+        },
+        "4": {
+          "type": "network-traffic",
+          "src_ref": "3",
+          "dst_ref": "5",
+          "protocols": [
+            "tcp"
+          ],
+          "src_port": 5357,
+          "dst_port": 60843
+        },
+        "5": {
+          "type": "ipv4-addr",
+          "value": "127.0.0.1"
+        },
+        "6": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--b20f0a16-49c0-4a5b-a45f-4843923f83f4",
+      "created": "2021-10-12T13:01:31.770Z",
+      "modified": "2021-10-12T13:01:31.770Z",
+      "first_observed": "2019-11-16T12:55:30.348Z",
+      "last_observed": "2019-11-16T12:55:30.348Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152952",
+          "process_ref": 1,
+          "network_ref": 4,
+          "host_ref": 6
+        },
+        "1": {
+          "type": "process",
+          "name": "System",
+          "binary_ref": "2",
+          "pid": 4,
+          "x_unique_id": "{7f07c11c-c0b9-5dcb-0000-0010eb030000}",
+          "opened_connection_refs": [
+            "4"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "System"
+        },
+        "3": {
+          "type": "ipv6-addr",
+          "value": "fe80:0:0:0:5d67:4a8:1e69:54d8"
+        },
+        "4": {
+          "type": "network-traffic",
+          "src_ref": "3",
+          "dst_ref": "5",
+          "protocols": [
+            "tcp"
+          ],
+          "src_port": 5357,
+          "dst_port": 57568
+        },
+        "5": {
+          "type": "ipv6-addr",
+          "value": "fe80:0:0:0:950c:ff99:129:5107"
+        },
+        "6": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--11e55409-6fed-4a08-a316-23051781ef50",
+      "created": "2021-10-12T13:01:31.770Z",
+      "modified": "2021-10-12T13:01:31.770Z",
+      "first_observed": "2019-11-16T12:55:51.760Z",
+      "last_observed": "2019-11-16T12:55:51.760Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152953",
+          "process_ref": 1,
+          "network_ref": 5,
+          "host_ref": 7
+        },
+        "1": {
+          "type": "process",
+          "name": "svchost.exe",
+          "binary_ref": "2",
+          "pid": 1728,
+          "x_unique_id": "{7f07c11c-c0e4-5dcb-0000-001016e30500}",
+          "opened_connection_refs": [
+            "5"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "svchost.exe",
+          "parent_directory_ref": "3"
+        },
+        "3": {
+          "type": "directory",
+          "path": "C:\\Windows\\System32"
+        },
+        "4": {
+          "type": "ipv4-addr",
+          "value": "239.255.255.250"
+        },
+        "5": {
+          "type": "network-traffic",
+          "src_ref": "4",
+          "dst_ref": "6",
+          "protocols": [
+            "udp"
+          ],
+          "src_port": 1900,
+          "dst_port": 63519
+        },
+        "6": {
+          "type": "ipv4-addr",
+          "value": "172.16.0.100"
+        },
+        "7": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--5b17a5ee-e1ab-4128-93cb-540464ae7f0c",
+      "created": "2021-10-12T13:01:31.770Z",
+      "modified": "2021-10-12T13:01:31.770Z",
+      "first_observed": "2019-11-16T12:56:11.266Z",
+      "last_observed": "2019-11-16T12:56:11.266Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152954",
+          "process_ref": 1,
+          "network_ref": 5,
+          "host_ref": 7
+        },
+        "1": {
+          "type": "process",
+          "name": "wdsync-inotify.exe",
+          "binary_ref": "2",
+          "pid": 7416,
+          "x_unique_id": "{7f07c11c-f61d-5dcb-0000-0010c219be00}",
+          "opened_connection_refs": [
+            "5"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "wdsync-inotify.exe",
+          "parent_directory_ref": "3"
+        },
+        "3": {
+          "type": "directory",
+          "path": "C:\\Program Files\\WD Desktop App"
+        },
+        "4": {
+          "type": "ipv4-addr",
+          "value": "127.0.0.1"
+        },
+        "5": {
+          "type": "network-traffic",
+          "src_ref": "4",
+          "dst_ref": "6",
+          "protocols": [
+            "tcp"
+          ],
+          "src_port": 60844,
+          "dst_port": 8384
+        },
+        "6": {
+          "type": "ipv4-addr",
+          "value": "127.0.0.1"
+        },
+        "7": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--62dd060b-7f51-430f-ad3c-445fd320e0ad",
+      "created": "2021-10-12T13:01:31.771Z",
+      "modified": "2021-10-12T13:01:31.771Z",
+      "first_observed": "2019-11-16T12:56:11.267Z",
+      "last_observed": "2019-11-16T12:56:11.267Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152955",
+          "process_ref": 1,
+          "network_ref": 5,
+          "host_ref": 7
+        },
+        "1": {
+          "type": "process",
+          "name": "wdsync.exe",
+          "binary_ref": "2",
+          "pid": 5692,
+          "x_unique_id": "{7f07c11c-f61e-5dcb-0000-0010141dbe00}",
+          "opened_connection_refs": [
+            "5"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "wdsync.exe",
+          "parent_directory_ref": "3"
+        },
+        "3": {
+          "type": "directory",
+          "path": "C:\\Program Files\\WD Desktop App"
+        },
+        "4": {
+          "type": "ipv4-addr",
+          "value": "127.0.0.1"
+        },
+        "5": {
+          "type": "network-traffic",
+          "src_ref": "4",
+          "dst_ref": "6",
+          "protocols": [
+            "tcp"
+          ],
+          "src_port": 8384,
+          "dst_port": 60844
+        },
+        "6": {
+          "type": "ipv4-addr",
+          "value": "127.0.0.1"
+        },
+        "7": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--049f3d3a-db8f-438c-ab2e-0370de9cc6e3",
+      "created": "2021-10-12T13:01:31.771Z",
+      "modified": "2021-10-12T13:01:31.771Z",
+      "first_observed": "2019-11-16T12:56:23.429Z",
+      "last_observed": "2019-11-16T12:56:23.429Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152956",
+          "process_ref": 1,
+          "network_ref": 4,
+          "host_ref": 6
+        },
+        "1": {
+          "type": "process",
+          "name": "System",
+          "binary_ref": "2",
+          "pid": 4,
+          "x_unique_id": "{7f07c11c-c0b9-5dcb-0000-0010eb030000}",
+          "opened_connection_refs": [
+            "4"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "System"
+        },
+        "3": {
+          "type": "ipv4-addr",
+          "value": "172.16.0.255"
+        },
+        "4": {
+          "type": "network-traffic",
+          "src_ref": "3",
+          "dst_ref": "5",
+          "protocols": [
+            "udp"
+          ],
+          "src_port": 138,
+          "dst_port": 138
+        },
+        "5": {
+          "type": "ipv4-addr",
+          "value": "172.16.0.101"
+        },
+        "6": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--ac1cf1c9-94e5-4c28-a5fb-fb06f656ada1",
+      "created": "2021-10-12T13:01:31.771Z",
+      "modified": "2021-10-12T13:01:31.771Z",
+      "first_observed": "2019-11-16T12:56:31.170Z",
+      "last_observed": "2019-11-16T12:56:31.170Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152957",
+          "process_ref": 1,
+          "network_ref": 5,
+          "host_ref": 7
+        },
+        "1": {
+          "type": "process",
+          "name": "svchost.exe",
+          "binary_ref": "2",
+          "pid": 1380,
+          "x_unique_id": "{7f07c11c-c0d7-5dcb-0000-001042920400}",
+          "opened_connection_refs": [
+            "5"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "svchost.exe",
+          "parent_directory_ref": "3"
+        },
+        "3": {
+          "type": "directory",
+          "path": "C:\\Windows\\System32"
+        },
+        "4": {
+          "type": "ipv4-addr",
+          "value": "192.168.1.156"
+        },
+        "5": {
+          "type": "network-traffic",
+          "src_ref": "4",
+          "dst_ref": "6",
+          "protocols": [
+            "tcp"
+          ],
+          "src_port": 60845,
+          "dst_port": 47413
+        },
+        "6": {
+          "type": "ipv4-addr",
+          "value": "192.168.1.1"
+        },
+        "7": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    },
+    {
+      "type": "observed-data",
+      "id": "observed-data--3924eff9-90e7-441c-af8e-8fdad9d53bdd",
+      "created": "2021-10-12T13:01:31.771Z",
+      "modified": "2021-10-12T13:01:31.771Z",
+      "first_observed": "2019-11-16T12:56:31.186Z",
+      "last_observed": "2019-11-16T12:56:31.186Z",
+      "objects": {
+        "0": {
+          "type": "x-oca-event",
+          "code": 3,
+          "action": "Network Connection",
+          "provider": "Microsoft-Windows-Sysmon/Operational",
+          "record_number": "1152958",
+          "process_ref": 1,
+          "network_ref": 5,
+          "host_ref": 7
+        },
+        "1": {
+          "type": "process",
+          "name": "svchost.exe",
+          "binary_ref": "2",
+          "pid": 1352,
+          "x_unique_id": "{7f07c11c-c0d7-5dcb-0000-001076900400}",
+          "opened_connection_refs": [
+            "5"
+          ]
+        },
+        "2": {
+          "type": "file",
+          "name": "svchost.exe",
+          "parent_directory_ref": "3"
+        },
+        "3": {
+          "type": "directory",
+          "path": "C:\\Windows\\System32"
+        },
+        "4": {
+          "type": "ipv4-addr",
+          "value": "239.255.255.250"
+        },
+        "5": {
+          "type": "network-traffic",
+          "src_ref": "4",
+          "dst_ref": "6",
+          "protocols": [
+            "udp"
+          ],
+          "src_port": 3702,
+          "dst_port": 59503
+        },
+        "6": {
+          "type": "ipv4-addr",
+          "value": "127.0.0.1"
+        },
+        "7": {
+          "type": "x-oca-asset",
+          "hostname": "Trillium"
+        }
+      },
+      "created_by_ref": "identity--ec822b33-d461-458b-97b6-e23950b41f72",
+      "number_observed": 1
+    }
+  ]
+}

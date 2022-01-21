@@ -7,6 +7,7 @@ import ujson
 
 from firepit import raft
 from firepit.deref import auto_deref
+from firepit.deref import unresolve
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidObject
@@ -433,14 +434,11 @@ class SqlStorage:
         else:
             writer = self._get_writer()
             splitter = SplitWriter(writer, batchsize=1000, replace=True)
-            sco_type = None
-            for obj in objects:
+            for obj in unresolve(objects):
                 if 'type' not in obj:
                     raise InvalidObject('missing `type`')
                 elif not isinstance(obj, dict):
                     raise InvalidObject('Unknown data format')
-                if not sco_type:
-                    sco_type = obj['type']
                 if 'id' not in obj:
                     raise InvalidObject('missing `id`')
                 splitter.write(obj)
@@ -516,7 +514,6 @@ class SqlStorage:
 
     def lookup(self, viewname, cols="*", limit=None, offset=None):
         """Get the value of `viewname`"""
-        sco_type = self.table_type(viewname) or viewname
         qry = Query(viewname)
         if cols != "*":
             dbcols = self.columns(viewname)
@@ -536,7 +533,7 @@ class SqlStorage:
                     proj.append(Column(col, viewname))
             qry.append(Projection(proj))
         else:
-            joins, proj = auto_deref(self, viewname, sco_type)
+            joins, proj = auto_deref(self, viewname)
             if joins:
                 qry.extend(joins)
             if proj:
@@ -547,6 +544,7 @@ class SqlStorage:
             qry.append(Offset(offset))
         cursor = self.run_query(qry)
         results = cursor.fetchall()
+        sco_type = self.table_type(viewname) or viewname
         if 'type' in cols or cols == '*':
             for result in results:
                 result['type'] = sco_type

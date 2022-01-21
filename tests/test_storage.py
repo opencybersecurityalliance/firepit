@@ -361,7 +361,36 @@ def test_reassign_after_grouping(fake_bundle_file, tmpdir):
     rows = store.lookup('grouped_conns')
     print(ujson.dumps(rows, indent=4))
     assert len(rows) == len(grouped_conns)
-    
+
+
+def test_reassign_enriched_refs(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    # Grab some network traffic
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port = 22]")
+    conns = store.lookup('conns')
+
+    # Grab the dest addrs from those same connections
+    store.extract('dests', 'ipv4-addr', 'q1', "[network-traffic:dst_port = 22]")
+
+    # Simulate running some analytics to enrich these
+    for conn in conns:
+        conn['dst_ref.x_enrich'] = 1
+
+    # Now reload into the same var
+    store.reassign('conns', conns)
+    rows = store.lookup('conns')
+    assert len(rows) == len(conns)
+
+    # Check dests for enrichment
+    dests = store.lookup('dests')
+    print(ujson.dumps(dests, indent=4))
+    for dest in dests:
+        assert 'x_enrich' in dest
+        if dest['value'].startswith('10.'):
+            assert dest['x_enrich'] == 1
+
 
 def test_appdata(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
