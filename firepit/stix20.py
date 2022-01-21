@@ -126,6 +126,13 @@ class _TranslateTree(Transformer):
                         f'{orig_op} not supported for SCO type {sco_type}')
             elif 'MATCHES' in op:
                 return f'{neg} match({rhs}, "{prop}")'
+            if prop.endswith('[*]'):
+                prop = prop[:-3]
+                op = 'LIKE'
+                rhs = rhs.strip("'")
+                rhs = f"'%{rhs}%'"
+                if op == '!=':
+                    neg = 'NOT'
             return f'"{prop}" {neg} {op} {rhs}'
         return ''
 
@@ -144,7 +151,10 @@ class _TranslateTree(Transformer):
     def obs_conj(self, lhs, rhs):
         return self.conj(lhs, rhs)
 
-    def comp_exp(self, lhs, op, rhs):
+    def comp_grp(self, exp):
+        return f'({exp})'
+
+    def simple_comp_exp(self, lhs, op, rhs):
         return self._make_comp(lhs, op, rhs)
 
     def comp_disj(self, lhs, rhs):
@@ -165,3 +175,6 @@ class _TranslateTree(Transformer):
     def start(self, exp, qualifier):
         # For now, drop the qualifier.  Assume the query handled it.
         return f'{exp}'
+
+    def object_path(self, sco_type, prop):
+        return f'{sco_type}:{prop}'
