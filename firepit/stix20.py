@@ -40,28 +40,14 @@ def _convert_op(sco_type, prop, op, rhs):
                 f'{orig_op} not supported for SCO type {sco_type}')
     elif 'MATCHES' in op:
         return f'{neg} match({rhs}, "{prop}")'
+    if prop.endswith('[*]'):
+        prop = prop[:-3]
+        op = 'LIKE'
+        rhs = rhs.strip("'")
+        rhs = f"'%{rhs}%'"
+        if op == '!=':
+            neg = 'NOT'
     return f'"{prop}" {neg} {op} {rhs}'
-    ## ORIG:
-    """
-    neg, sep, op = op.rpartition(' ')
-    if op == 'ISSUBSET':
-        op = '==' if not neg else '!='
-        if sco_type == 'ipv4-addr':
-            return f'ip2int("{prop}") & ip2int({rhs}) {op} ip2int({rhs})'
-        else:
-            raise ValueError(
-                f'{op} not supported for SCO type {sco_type}')
-    elif op == 'ISSUPERSET':  # When would anyone use ISSUPERSET?
-        op = '==' if not neg else '!='
-        if sco_type == 'ipv4-addr':
-            return f'ip2int("{prop}") & ip2int({rhs}) {op} ip2int("{prop}")'
-        else:
-            raise ValueError(
-                f'{op} not supported for SCO type {sco_type}')
-    elif 'MATCHES' in op:
-        return f'{neg}{sep}match({rhs}, "{prop}")'
-    return f'"{prop}" {neg}{sep}{op} {rhs}'
-    """
 
 
 def comp2sql(sco_type, path, op, value):
@@ -69,7 +55,6 @@ def comp2sql(sco_type, path, op, value):
     links = parse_path(path)
     for link in reversed(links):
         if link[0] == 'node':
-            #result = _convert_op(sco_type, link[2], op, value)
             from_type = link[1] or sco_type
             result = _convert_op(from_type, link[2], op, value)
         elif link[0] == 'rel':
@@ -81,14 +66,9 @@ def path2sql(sco_type, path):
     result = ''
     links = parse_path(path)
     for link in reversed(links):
-        print('path2sql:', link)
         if link[0] == 'node':
-            #result = _convert_op(sco_type, link[2], op, value)
             pass
         elif link[0] == 'rel':
-            #subquery = f'"{link[2]}" IN (SELECT "id" FROM "{link[3]}"'
-            #if result:
-            #    subquery += f' WHERE {result})'
             result = f'"{link[2]}" IN (SELECT "id" FROM "{link[3]}" WHERE {result})'
     return result
 
@@ -107,33 +87,6 @@ class _TranslateTree(Transformer):
         # Ignore object paths that don't match table type
         if self.sco_type == sco_type:
             return comp2sql(sco_type, prop, op, rhs)
-            neg, _, op = op.rpartition(' ')
-            if op == 'ISSUBSET':
-                op = '=='
-                if sco_type == 'ipv4-addr' or lhs in ['network-traffic:src_ref.value',
-                                                      'network-traffic:dst_ref.value']:
-                    return f'{neg} (in_subnet("{prop}", {rhs}))'
-                else:
-                    raise ValueError(
-                        f'{orig_op} not supported for SCO type {sco_type}')
-            elif op == 'ISSUPERSET':  # When would anyone use ISSUPERSET?
-                op = '=='
-                if sco_type == 'ipv4-addr' or lhs in ['network-traffic:src_ref.value',
-                                                      'network-traffic:dst_ref.value']:
-                    return f'{neg} (in_subnet({rhs}, "{prop}"))'  # FIXME!
-                else:
-                    raise ValueError(
-                        f'{orig_op} not supported for SCO type {sco_type}')
-            elif 'MATCHES' in op:
-                return f'{neg} match({rhs}, "{prop}")'
-            if prop.endswith('[*]'):
-                prop = prop[:-3]
-                op = 'LIKE'
-                rhs = rhs.strip("'")
-                rhs = f"'%{rhs}%'"
-                if op == '!=':
-                    neg = 'NOT'
-            return f'"{prop}" {neg} {op} {rhs}'
         return ''
 
     def _make_exp(self, lhs, op, rhs):
