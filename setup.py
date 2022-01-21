@@ -11,6 +11,7 @@ with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
 requirements = [
+    'anytree',
     'ijson',
     'lark-parser',
     'orjson>=3.3.1',

@@ -53,3 +53,9 @@ def fake_bundle_list():
 def one_event_bundle():
     cwd = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(cwd, 'one_event.json')
+
+
+@pytest.fixture
+def mixed_v4_v6_bundle():
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(cwd, 'mixed-v4-v6.json')

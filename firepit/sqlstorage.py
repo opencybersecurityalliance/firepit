@@ -6,6 +6,7 @@ import orjson
 import ujson
 
 from firepit import raft
+from firepit.deref import auto_deref
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidObject
@@ -515,6 +516,7 @@ class SqlStorage:
 
     def lookup(self, viewname, cols="*", limit=None, offset=None):
         """Get the value of `viewname`"""
+        sco_type = self.table_type(viewname) or viewname
         qry = Query(viewname)
         if cols != "*":
             dbcols = self.columns(viewname)
@@ -533,11 +535,16 @@ class SqlStorage:
                 else:
                     proj.append(Column(col, viewname))
             qry.append(Projection(proj))
+        else:
+            joins, proj = auto_deref(self, viewname, sco_type)
+            if joins:
+                qry.extend(joins)
+            if proj:
+                qry.append(proj)
         if limit:
             qry.append(Limit(limit))
         if offset:
             qry.append(Offset(offset))
-        sco_type = self.table_type(viewname) or viewname
         cursor = self.run_query(qry)
         results = cursor.fetchall()
         if 'type' in cols or cols == '*':

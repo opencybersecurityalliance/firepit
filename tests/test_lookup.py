@@ -32,3 +32,25 @@ def test_lookup_src_dst(fake_bundle_file, tmpdir):
     counter = Counter([c['src_ref.value'] + '_' + c['dst_ref.value'] for c in conns])
     assert counter['192.168.90.122_10.0.0.214'] == 2
     assert counter['192.168.132.245_10.0.0.214'] == 1
+
+
+def test_lookup_mixed(mixed_v4_v6_bundle, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [mixed_v4_v6_bundle])
+
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port > 0]")
+    conns = store.lookup('conns')
+    assert len(conns) == 10
+    counter = Counter([c['src_ref.value'] + '_' + c['dst_ref.value'] for c in conns])
+    assert counter['192.168.1.156_192.168.1.1'] == 2
+    assert counter['fe80:0:0:0:5d67:4a8:1e69:54d8_fe80:0:0:0:950c:ff99:129:5107'] == 1
+
+
+def test_lookup_procs(ccoe_bundle, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [ccoe_bundle])
+
+    store.extract('procs', 'process', 'q1', "[process:pid > 0]")
+    procs = store.lookup('procs')
+    assert len(procs) == 1021
+    assert 'parent_ref.pid' in procs[0]
