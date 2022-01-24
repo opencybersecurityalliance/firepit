@@ -363,6 +363,7 @@ def test_reassign_after_grouping(fake_bundle_file, tmpdir):
     assert len(rows) == len(grouped_conns)
 
 
+# With the normalized DB, can we still enrich IPs in network-traffic?
 def test_reassign_enriched_refs(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])

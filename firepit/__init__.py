@@ -5,17 +5,21 @@ __email__ = 'pcoccoli@us.ibm.com'
 __version__ = '1.3.1'
 
 
+import re
+
 from importlib import import_module
 from urllib.parse import urlparse
 
 from firepit.validate import validate_name
 
-import re
-
 def get_storage(url, session_id=None):
+    """
+    Get a storage object for firepit.  `url` will determine the type; a file path means sqlite3.
+    `session_id` is used in the case of postgresql to partition your data.
+    """
     if session_id:
         validate_name(session_id)
-    url = re.sub(r'^.*postgresql://', 'postgresql://', url)
+    url = re.sub(r'^.*postgresql://', 'postgresql://', url)  # Ugly hack for kestrel
     url = urlparse(url)
     if url.scheme == 'postgresql':
         module = import_module('firepit.pgstorage')
