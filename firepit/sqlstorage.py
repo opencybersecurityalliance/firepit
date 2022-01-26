@@ -45,7 +45,7 @@ def _transform(filename):
         if 'type' not in obj:
             obj['type'], _, _ = obj['id'].partition('--')
         if obj['type'] != 'identity':
-            for o in (raft.json_normalize(obj, flat_lists=False) for obj in raft.make_sro(obj)):
+            for o in (raft.json_normalize(obj, flat_lists=False) for obj in raft.flatten(obj)):
                 yield o
         else:
             yield obj

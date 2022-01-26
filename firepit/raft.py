@@ -300,9 +300,9 @@ def _rank(results, sco_id, rank):
 
 
 
-def make_sro_21(obj):  # TODO: better name
+def flatten_21(obj):
     """
-    For STIX 2.1 objects, convert ref lists to SROs
+    For STIX 2.1 objects, "flatten" references
     """
     results = [obj]
     oid = obj['id']
@@ -347,12 +347,12 @@ def make_sro_21(obj):  # TODO: better name
     return results
 
 
-def make_sro(obs):  # TODO: better name
+def flatten(obs):
     """
-    Convert ref lists to SROs, add ids if missing, etc.
+    Convert ref lists to objects, add ids if missing, etc.
     """
     if obs.get('spec_version', '2.0') == '2.1':
-        return make_sro_21(obs)
+        return flatten_21(obs)
 
     scos = obs['objects']
     ref_map = {}
