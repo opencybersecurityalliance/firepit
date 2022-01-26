@@ -54,9 +54,7 @@ def _transform(filename):
 def infer_type(key, value):
     if key == 'id':
         rtype = 'TEXT UNIQUE'
-    elif key == 'src_port':
-        rtype = 'INTEGER'
-    elif key == 'dst_port':
+    elif key in ['src_port', 'dst_port', 'x_firepit_rank']:
         rtype = 'INTEGER'
     elif key == 'ipfix.flowId':
         rtype = 'TEXT'  # Should be uint64, but that's not supported anywhere!
