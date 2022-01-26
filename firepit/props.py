@@ -102,9 +102,9 @@ def ref_type(sco_type, part):
     elif part in ['dst_os_ref', 'src_os_ref',
                   'dst_application_ref', 'src_application_ref']:  # x-ibm-finding
         return ['software']
-    elif part == ['ip_refs']:  # x-oca-asset, x-oca-event, x-oca-pod-ext
+    elif part == 'ip_refs':  # x-oca-asset, x-oca-event, x-oca-pod-ext
         return ['ipv4-addr', 'ipv6-addr']
-    elif part == ['mac_refs']:  # x-oca-asset
+    elif part == 'mac_refs':  # x-oca-asset
         return ['mac-addr']
     elif part == 'opened_connection_refs':
         return ['network-traffic']
@@ -132,6 +132,9 @@ def ref_type(sco_type, part):
     elif sco_type == 'x-ibm-finding':
         if part.endswith('_user_ref'):
             return ['user-account']
+    elif (sco_type == 'email-message' and
+          part in ['from_ref', 'sender_ref', 'to_refs', 'cc_refs', 'bcc_refs']):
+        return ['email-addr']
 
     # TODO: hueristics/classifier to guess?
     raise NotImplementedError(f'{sco_type}:{part}')  # TEMP
