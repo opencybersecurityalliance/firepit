@@ -44,34 +44,38 @@ data organized.
       Columnar storage for STIX observations
 
     Options:
-      --dbname TEXT   Path/name of database  [default: stix.db]
+      --dbname TEXT   Path/name of database
       --session TEXT  Session ID to data separation  [default: test-id]
       --help          Show this message and exit.
 
     Commands:
-      assign       Perform an operation on a column and name the result
-      cache        Cache STIX observation data in SQL
-      columns      Get the columns names of a view/table
-      count        Get the count of rows in a view/table
-      delete       Delete STIX observation data in SQL
-      extract      Create a view of a subset of cached data
-      filter       Create a filtered view of a subset of cached data
-      get-appdata  Get the app-specific data for a view
-      join         Join two views
-      load         Cache STIX observation data in SQL
-      lookup       Retrieve a view
-      merge        Merge 2 or more views into a new view
-      reassign     Update/replace STIX observation data in SQL
-      remove       Remove a view
-      rename       Rename a view
-      schema       Get the schema of a view/table
-      set-appdata  Set the app-specific data for a view
-      sql          Run a SQL statement on the database [DANGEROUS!]
-      tables       Get all view/table names
-      type         Get the SCO type of a view/table
-      values       Retrieve the values of a STIX object path from a view
-      viewdata     Get view data for views [default is all views]
-      views        Get all view names
+      assign           Perform an operation on a column and name the result
+      cache            Cache STIX observation data in SQL
+      columns          Get the columns names of a view/table
+      count            Get the count of rows in a view/table
+      delete           Delete STIX observation data in SQL
+      extract          Create a view of a subset of cached data
+      filter           Create a filtered view of a subset of cached data
+      get-appdata      Get the app-specific data for a view
+      join             Join two views
+      load             Cache STIX observation data in SQL
+      lookup           Retrieve a view
+      merge            Merge 2 or more views into a new view
+      number-observed  Retrieve the count of values of a column from a view
+      reassign         Update/replace STIX observation data in SQL
+      remove           Remove a view
+      rename           Rename a view
+      schema           Get the schema of a view/table
+      set-appdata      Set the app-specific data for a view
+      sql              Run a SQL statement on the database [DANGEROUS!]
+      summary          Retrieve timeframe and count from a view
+      tables           Get all view/table names
+      timestamped      Retrieve the timestamped values of a column from a view
+      type             Get the SCO type of a view/table
+      value-counts     Retrieve the value counts of a column from a view
+      values           Retrieve the values of a STIX object path from a view
+      viewdata         Get view data for views [default is all views]
+      views            Get all view names
 
     $ firepit cache --help
     Usage: firepit cache [OPTIONS] QUERY_ID FILENAMES...

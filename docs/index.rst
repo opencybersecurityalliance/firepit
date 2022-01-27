@@ -8,6 +8,7 @@ Welcome to Firepit's documentation!
    readme
    installation
    usage
+   database
    modules
    contributing
    authors
