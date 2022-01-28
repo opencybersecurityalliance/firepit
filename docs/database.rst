@@ -19,6 +19,8 @@ STIX observation data is inserted into multiple tables within a "session" (a dat
 
 These tables are prefixed with `__` and considered "private" by firepit.
 
+The STIX `id` property is used as the unique key for each table.
+
 The `observed-data` Table
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -28,12 +30,61 @@ This SDO (and therefore table) holds the timestamps and count of actual observat
 
 The examples below show how to link `observed-data` with SCOs via the "private" `__contains` table.
 
+SCO Tables
+^^^^^^^^^^
+
+Each SCO table (`ipv4-addr`, `network-traffic`, `file`, etc.) contains the properties present from the cached bundles.  Firepit does not require any specific properties (though STIX does).  Columns are only created for properties found.
+
+For example, the `network-traffic` table should have properties `src_ref` (a reference to an object in either the `ipv4-addr` or `ipv6-addr` table) which represents the connection's source address, `dst_ref`, `src_port`, `dst_port`, and `protocols`.  The port properties are simple integers, and stored in integer columns.  The `protocols` column is a list of strings; it's stored as a JSON-encoded string.
+
+STIX Object Paths
+-----------------
+
+STIX object paths (e.g. `network-traffic:src_ref.value`) are a key part of STIX patterning, which (from Firepit's perspective) is equivalent to a WHERE clause.  They can contain implicit JOINs: `network-traffic` is a table, `src_ref` is the `id` property for an `ipv4-addr` (or `ipv6-addr`) which is the unique key for that table.  `value` is a column in that referenced table.
+
+Firepit operations will (in most cases) accept STIX object paths and create the required JOIN.
+
 Example SQL queries
 -------------------
 
+Full Network Traffic Information
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The `network-traffic` SCO only contains references to the source and destination addresses.  To see the actual addresses, you need to join the `ipv4-addr` table:
+
+.. code-block::
+
+   sqlite> select
+      ...>   src.value as "src_ref.value",
+      ...>   nt.src_port as "src_port",
+      ...>   dst.value as "dst_ref.value",
+      ...>   nt.dst_port as "dst_port",
+      ...>   nt.protocols
+      ...> from
+      ...>   "network-traffic" as nt
+      ...>   join "ipv4-addr" as src on nt.src_ref = src.id
+      ...>   join "ipv4-addr" as dst on nt.dst_ref = dst.id
+      ...> ;
+   src_ref.value  src_port    dst_ref.value  dst_port    protocols 
+   -------------  ----------  -------------  ----------  ----------
+   192.168.1.156  60842       192.168.1.1    47413       ["tcp"]   
+   127.0.0.1      60843       127.0.0.1      5357        ["tcp"]   
+
+The `firepit` CLI makes this easier; for example, using the `lookup` command:
+
+.. code-block::
+
+   $ firepit lookup network-traffic --columns src_ref.value,src_port,dst_ref.value,dst_port,protocols
+   src_ref.value      src_port  dst_ref.value      dst_port  protocols
+   ---------------  ----------  ---------------  ----------  -----------
+   192.168.1.156         60842  192.168.1.1           47413  ["tcp"]
+   127.0.0.1             60843  127.0.0.1              5357  ["tcp"]
+
+Most CLI commands have an API function of the same name in the SqlStorage class.
+
 Timestamped SCOs
 ^^^^^^^^^^^^^^^^
-To see the first 3 IP addresses observed:
+To see the first 3 IP addresses observed, join the special `__contains` and `observed-data` tables:
 
 .. code-block::
 
