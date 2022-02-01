@@ -23,7 +23,14 @@
 ?comp_conj: comp_exp
           | comp_conj "AND" comp_exp
 
-comp_exp: PATH (OP|OPE) value
+?comp_exp: simple_comp_exp
+         | comp_grp
+
+simple_comp_exp: object_path (OP|OPE) value
+
+comp_grp: "(" comp_disj ")"
+
+object_path: ECNAME ":" PATH
 
 // Only supported qualifier is START/STOP
 ?qualifier: "START" timestamp "STOP" timestamp
@@ -44,7 +51,7 @@ reference: ECNAME "." PATH
 OP: /([<>!]?=|[<>])/
 OPE: /(NOT )?(IN|LIKE|MATCHES|ISSUBSET|ISSUPERSET)/
 
-PATH: ECNAME (("["DIGIT+"]")?("."|":")ECNAME)*
+PATH: ECNAME ("[*]")? ("." ("_"|"-"|"'"|LETTER|DIGIT)*)*
 
 ECNAME: LETTER ("_"|"-"|LETTER|DIGIT)*
 
