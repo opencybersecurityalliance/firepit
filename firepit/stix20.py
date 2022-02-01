@@ -48,13 +48,17 @@ class _TranslateTree(Transformer):
                         f'{orig_op} not supported for SCO type {sco_type}')
             elif 'MATCHES' in op:
                 return f'{neg} match({rhs}, "{prop}")'
-            if prop.endswith('[*]'):
-                prop = prop[:-3]
-                op = 'LIKE'
-                rhs = rhs.strip("'")
-                rhs = f"'%{rhs}%'"
+            prop, chunk, subprop = prop.partition('[*]')
+            if chunk:
                 if op == '!=':
                     neg = 'NOT'
+                op = 'LIKE'
+                rhs = rhs.strip("'")
+                if subprop:
+                    subprop = subprop.lstrip('.')
+                    rhs = f"'%\"{subprop}\":\"{rhs}\"%'"
+                else:
+                    rhs = f"'%{rhs}%'"
             return f'"{prop}" {neg} {op} {rhs}'
         return ''
 

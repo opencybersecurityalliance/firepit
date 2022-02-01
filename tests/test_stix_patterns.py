@@ -29,6 +29,12 @@ def _normalize_ws(s):
         ('network-traffic',
          "[network-traffic:protocols[*] = 'tcp']",
          "\"protocols\" LIKE '%tcp%'"),
+        ('network-traffic',
+         "[network-traffic:protocols[*] != 'tcp']",
+         "\"protocols\" NOT LIKE '%tcp%'"),
+        ('windows-registry-key',
+         "[windows-registry-key:values[*].name = 'foo']",
+         "\"values\" LIKE '%\"name\":\"foo\"%'"),
         #TODO: need MATCHES example with PCRE that Python re doesn't support
     ]
 )
