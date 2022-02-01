@@ -28,11 +28,20 @@ def test_validate_name(name, expected):
 @pytest.mark.parametrize(
     'path, expected', [
         ('foo', True),
-        # ('things[*]', True),
+        ('things[*]', True),
         ('one.two', True),
-        ("hashes.'SHA-256'", True),
         ('foo;', False),
         ('foo; --', False),
+        ('foo."bar"', False),
+        ('ipv4_addr:value', False),
+        ("hashes.'SHA-256'", True),
+        ("values[*].name", True),
+        ("extensions.'http-request-ext'.request_headers.'Content-Type'", True),
+        ("ipv4-addr:value", True),
+        ("file:hashes.'SHA-1'", True),
+        ("file:hashes.IMPHASH", True),
+        ("windows-registry-key:values[*].data", True),
+        ("network-traffic:protocols[*]", True),
     ]
 )
 def test_validate_path(path, expected):

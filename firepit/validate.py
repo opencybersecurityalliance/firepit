@@ -12,5 +12,5 @@ def validate_name(name):
 
 
 def validate_path(path):
-    if not bool(re.match(r"^([a-zA-Z][a-zA-Z0-9-]*:)?[\w\.'-]+$", path)):
+    if not bool(re.match(r"^([a-zA-Z][a-zA-Z0-9-]*:)?[\w\'-]+(\[\*\])?(\.[\w\'-]+)*$", path)):
         raise InvalidStixPath(path)
