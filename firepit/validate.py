@@ -18,5 +18,5 @@ def validate_path(path):
     """
     Make sure `path` is a valid STIX object path or property name
     """
-    if not bool(re.match(r"^([a-zA-Z][a-zA-Z0-9-]*:)?[\w\.'-]+$", path)):
+    if not bool(re.match(r"^([a-zA-Z][a-zA-Z0-9-]*:)?[\w\'-]+(\[\*\])?(\.[\w\'-]+)*$", path)):
         raise InvalidStixPath(path)

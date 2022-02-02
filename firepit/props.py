@@ -147,6 +147,8 @@ def is_ref(name):
 
 def parse_path(path):
     sco_type, _, prop = path.rpartition(':')
+    if '_ref.' not in prop and '_refs' not in prop:
+        return [('node', sco_type, prop)]
     parts = prop.split('.')
     result = []
     prev_type = sco_type
