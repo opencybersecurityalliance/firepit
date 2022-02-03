@@ -585,7 +585,7 @@ class SqlStorage:
         # This is DB-specific
         raise NotImplementedError('Storage.tables')
 
-    def types(self):
+    def types(self, private=False):
         """Get all table names that correspond to SCO types"""
         # This is DB-specific
         raise NotImplementedError('Storage.types')

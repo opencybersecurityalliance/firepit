@@ -179,11 +179,13 @@ class SQLiteStorage(SqlStorage):
                 if not i['name'].startswith('__') and
                 not i['name'].startswith('sqlite')]
 
-    def types(self):
+    def types(self, private=False):
         stmt = ("SELECT name FROM sqlite_master WHERE type='table'"
                 " EXCEPT SELECT name FROM __symtable")
         cursor = self.connection.execute(stmt)
         rows = cursor.fetchall()
+        if private:
+            return [i['name'] for i in rows]
         return [i['name'] for i in rows
                 if not i['name'].startswith('__') and
                 not i['name'].startswith('sqlite')]

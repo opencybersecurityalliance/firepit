@@ -126,8 +126,8 @@ class SqlWriter:
         finally:
             cursor.close()
 
-    def types(self):
-        tables = self.store.tables()
+    def types(self, private):
+        tables = self.store.types(private)
         return [_strip_prefix(table, self.prefix) for table in tables]
 
     def properties(self, obj_type):
@@ -192,7 +192,7 @@ class SplitWriter:
         return {col['name']: col['type'] for col in self.writer.properties(obj_type)}
 
     def _load_schemas(self):
-        for obj_type in self.writer.types():
+        for obj_type in self.writer.types(True):
             self.schemas[obj_type] = self._load_schema(obj_type)
 
     def write(self, obj):

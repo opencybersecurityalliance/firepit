@@ -365,12 +365,14 @@ class PgStorage(SqlStorage):
         return [i['table_name'] for i in rows
                 if not i['table_name'].startswith('__')]
 
-    def types(self):
+    def types(self, private=False):
         stmt = ("SELECT table_name FROM information_schema.tables"
                 " WHERE table_schema = %s AND table_type != 'VIEW'"
                 "  EXCEPT SELECT name as table_name FROM __symtable")
         cursor = self._query(stmt, (self.session_id, ))
         rows = cursor.fetchall()
+        if private:
+            return [i['table_name'] for i in rows]
         # Ignore names that start with 1 or 2 underscores
         return [i['table_name'] for i in rows
                 if not i['table_name'].startswith('_')]
