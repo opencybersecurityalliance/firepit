@@ -256,6 +256,19 @@ class PgStorage(SqlStorage):
         except psycopg2.errors.DuplicateColumn:
             self.connection.rollback()
 
+        # update all relevant viewdefs
+        stmt = 'SELECT name FROM __symtable WHERE type = %s'
+        cursor = self._query(stmt, (tablename,))
+        rows = cursor.fetchall()
+        for row in rows:
+            viewname = row['name']
+            viewdef = self._get_view_def(viewname)
+            print(viewname, viewdef)
+            viewdef = re.sub(r'^SELECT .*? FROM ', f'SELECT "{tablename}".* FROM ', viewdef, count=1)
+            print(viewname, viewdef)
+            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {viewdef}', cursor)
+
     def _create_empty_view(self, viewname, cursor):
         cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as id WHERE 1<>1;')
 
@@ -412,13 +425,13 @@ class PgStorage(SqlStorage):
         values = []
         query_values = []
         for obj in objs:
-            if query_id and idx:
+            if query_id and idx is not None:
                 query_values.append(obj[idx])
                 query_values.append(query_id)
             values.extend([str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value for value in obj])
         cursor.execute(stmt, values)
 
-        if query_id and idx:
+        if query_id and 'id' in colnames:
             # Now add to query table as well
             placeholders = ', '.join([f'({self.placeholder}, {self.placeholder})'] * len(objs))
             stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'

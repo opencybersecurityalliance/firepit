@@ -146,6 +146,10 @@ def unresolve(objects):
 
                 # Add prop to new obj
                 reffed[ref][rest] = obj[prop]
+
+                # just add ref to obj
+                if rest == 'id':
+                    pruned[ref] = obj[prop]
             else:
                 pruned[prop] = obj[prop]
         for new_obj in reffed.values():
