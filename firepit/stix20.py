@@ -2,7 +2,7 @@ import os
 
 from lark import Lark, Transformer, v_args
 
-from firepit.props import parse_path
+from firepit.props import parse_prop
 
 
 def get_grammar():
@@ -19,11 +19,10 @@ def stix2sql(pattern, sco_type):
 
 
 def _convert_op(sco_type, prop, op, rhs):
-    # TODO: update this
     orig_op = op
     neg, _, op = op.rpartition(' ')
     if op == 'ISSUBSET':
-        op = '=='
+        #TODO: ipv6-addr
         if sco_type == 'ipv4-addr' or prop in ['src_ref.value',
                                                'dst_ref.value']:
             return f'{neg} (in_subnet("{prop}", {rhs}))'
@@ -31,14 +30,14 @@ def _convert_op(sco_type, prop, op, rhs):
             raise ValueError(
                 f'{orig_op} not supported for SCO type {sco_type}')
     elif op == 'ISSUPERSET':  # When would anyone use ISSUPERSET?
-        op = '=='
+        #TODO: ipv6-addr
         if sco_type == 'ipv4-addr' or prop in ['src_ref.value',
                                                'dst_ref.value']:
             return f'{neg} (in_subnet({rhs}, "{prop}"))'  # FIXME!
         else:
             raise ValueError(
                 f'{orig_op} not supported for SCO type {sco_type}')
-    elif 'MATCHES' in op:
+    elif op == 'MATCHES':
         return f'{neg} match({rhs}, "{prop}")'
     prop, chunk, subprop = prop.partition('[*]')
     if chunk:
@@ -54,21 +53,29 @@ def _convert_op(sco_type, prop, op, rhs):
     return f'"{prop}" {neg} {op} {rhs}'
 
 
-def comp2sql(sco_type, path, op, value):
+def comp2sql(sco_type, prop, op, value):
     result = ''
-    links = parse_path(path)
+    links = parse_prop(sco_type, prop)
     for link in reversed(links):
         if link[0] == 'node':
             from_type = link[1] or sco_type
             result = _convert_op(from_type, link[2], op, value)
         elif link[0] == 'rel':
-            result = f'"{link[2]}" IN (SELECT "id" FROM "{link[3]}" WHERE {result})'
+            _, from_type, ref_name, to_type = link
+            if ref_name.endswith('_refs'):
+                # Handle reflists
+                tmp = (f'JOIN "__reflist" AS "r" ON "{from_type}"."id" = "r"."source_ref"'
+                       f' WHERE "target_ref"')
+            else:
+                tmp = f'"{ref_name}"'
+            result = f' {tmp} IN (SELECT "id" FROM "{to_type}" WHERE {result})'
+
     return result
 
 
 def path2sql(sco_type, path):
     result = ''
-    links = parse_path(path)
+    links = parse_prop(sco_type, path)
     for link in reversed(links):
         if link[0] == 'node':
             pass

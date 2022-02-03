@@ -147,13 +147,24 @@ def is_ref(name):
 
 def parse_path(path):
     sco_type, _, prop = path.rpartition(':')
+    return parse_prop(sco_type, prop)
+
+
+def parse_prop(sco_type, prop):
     if '_ref.' not in prop and '_refs' not in prop:
         return [('node', sco_type, prop)]
     parts = prop.split('.')
     result = []
     prev_type = sco_type
     for part in parts:
+        if part.endswith('[*]'):
+            is_list = True
+            part = part[:-3]
+        else:
+            is_list = False
         if not is_ref(part):
+            if is_list:
+                part += '[*]'
             result.append(('node', prev_type, part))
             prev_type = part
         else:

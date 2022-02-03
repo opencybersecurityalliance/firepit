@@ -71,7 +71,7 @@ class SQLiteStorage(SqlStorage):
             else:
                 cursor.execute(query, values)
         except sqlite3.OperationalError as e:
-            logger.debug('%s', e)  #, exc_info=e)
+            logger.error('%s: %s', query, e)  #, exc_info=e)
             if e.args[0].startswith("no such column"):
                 m = e.args[0].replace("no such column", "invalid attribute")
                 raise InvalidAttr(m) from e

@@ -17,6 +17,7 @@ from firepit.exceptions import UnknownViewname
 from firepit.props import auto_agg
 from firepit.props import auto_agg_tuple
 from firepit.props import parse_path
+from firepit.props import parse_prop
 from firepit.props import primary_prop
 from firepit.query import Aggregation
 from firepit.query import Column
@@ -217,7 +218,7 @@ class SqlStorage:
         if not sco_type:
             sco_type = self.table_type(viewname)
         aliases = {sco_type: viewname}
-        links = parse_path(column)
+        links = parse_path(column) if ':' in column else parse_prop(sco_type, column)
         target_table = None
         target_column = None
         results = []  # Query components to return
@@ -239,7 +240,13 @@ class SqlStorage:
                 lhs = aliases.get(from_type, from_type)
                 alias, _, _ = ref_name.rpartition('_')
                 aliases[to_type] = alias
-                results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
+                if ref_name.endswith('_refs'):
+                    # Handle reflist
+                    # TODO: need to add ref_name to Join condition?
+                    results.append(Join('__reflist', 'id', '=', 'source_ref', lhs=lhs, alias='r'))
+                    results.append(Join(to_type, 'target_ref', '=', 'id', lhs='r', alias=alias))
+                else:
+                    results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
             target_table = aliases.get(target_table, target_table)
         return results, target_table, target_column
 
@@ -552,6 +559,8 @@ class SqlStorage:
         validate_path(path)
         validate_name(viewname)
         sco_type, _, column = path.rpartition(':')
+        if not sco_type:
+            sco_type = viewname  # TODO: verify this is OK to do
         qry = Query(viewname)
         if column not in self.columns(viewname):
             joins, target_table, target_column = self.path_joins(viewname, sco_type, column)
