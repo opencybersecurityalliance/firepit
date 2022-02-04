@@ -70,7 +70,7 @@ def _get_reflists(store, view):
     return [r['ref_name'] for r in store.run_query(qry).fetchall()]
 
 
-def auto_deref(store, view):
+def auto_deref(store, view, ignore=None):
     """Automatically resolve all refs for backward compatibility"""
     proj = []
     cols = store.columns(view)
@@ -82,7 +82,7 @@ def auto_deref(store, view):
             proj.append(Column(col, view))
     all_types = set(store.types())
     mixed_ips = ('ipv4-addr' in all_types and 'ipv6-addr' in all_types)
-    root = _dfs(store, view, all_types=all_types)
+    root = _dfs(store, view, all_types=all_types, ignore=ignore)
     #print(RenderTree(root))
     joins = []
     aliases = {}
@@ -115,20 +115,20 @@ def auto_deref(store, view):
     return joins, proj
 
 
-def _dfs(store, sco_type, parent=None, ref=None, all_types=None):
+def _dfs(store, sco_type, parent=None, ref=None, all_types=None, ignore=None):
     """Depth-first search for reference dependencies"""
     node = Node(sco_type, parent=parent, edge=ref)
     props = store.columns(sco_type)
-    ignore = set()
-    if 'process_ref' in props and 'parent_process_ref' in props:
-        # Special case for x-oca-event
-        ignore.add('parent_process_ref')
+    if not ignore:
+        ignore = defaultdict(list)
+        ignore['x-oca-asset'] = ['parent_process_ref']
+    ignore_props = ignore.get(sco_type, [])
     for prop in props:
-        if prop.endswith("_ref") and prop not in ignore:
+        if prop.endswith("_ref") and prop not in ignore_props:
             rtypes = set(ref_type(sco_type, get_last(prop))) & all_types
             ptype = list(rtypes)[0]
             if ptype != sco_type:
-                _dfs(store, ptype, parent=node, ref=prop, all_types=all_types)
+                _dfs(store, ptype, parent=node, ref=prop, all_types=all_types, ignore=ignore)
     return node
 
 

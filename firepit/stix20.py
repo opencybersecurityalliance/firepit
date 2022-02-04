@@ -65,7 +65,7 @@ def comp2sql(sco_type, prop, op, value):
             if ref_name.endswith('_refs'):
                 # Handle reflists
                 tmp = (f'JOIN "__reflist" AS "r" ON "{from_type}"."id" = "r"."source_ref"'
-                       f' WHERE "target_ref"')
+                       f' WHERE "r"."target_ref"')
             else:
                 tmp = f'"{ref_name}"'
             result = f' {tmp} IN (SELECT "id" FROM "{to_type}" WHERE {result})'
