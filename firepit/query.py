@@ -78,6 +78,9 @@ class Column:
             result = f'{result} AS "{self.alias}"'
         return result
 
+    def endswith(self, s):
+        return str(self).endswith(s)
+
 
 class CoalescedColumn:
     """First non-null column from a list - used after a JOIN"""
@@ -111,7 +114,8 @@ class Predicate:
                     op = 'LIKE'
                 elif op == '!=':
                     op = 'NOT LIKE'
-        validate_path(lhs)
+        if isinstance(lhs, str):
+            validate_path(lhs)
         self.lhs = lhs
         self.op = op
         self.rhs = rhs
@@ -121,22 +125,26 @@ class Predicate:
                 raise InvalidComparisonOperator(op)  # Maybe need different exception here?
         elif isinstance(self.rhs, (list, tuple)):
             self.values = tuple(self.rhs)
+        elif isinstance(self.rhs, Column):
+            self.values = tuple()
         else:
             self.values = (self.rhs, )
 
     def render(self, placeholder):
         if self.rhs in ['null', 'NULL']:
             if self.op in ['!=', '<>']:
-                text = f'("{self.lhs}" IS NOT NULL)'
+                text = f'({_quote(self.lhs)} IS NOT NULL)'
             elif self.op == '=':
-                text = f'("{self.lhs}" IS NULL)'
+                text = f'({_quote(self.lhs)} IS NULL)'
             else:
                 raise InvalidComparisonOperator(self.op)
+        elif isinstance(self.rhs, Column):
+            text = f'({_quote(self.lhs)} {self.op} {_quote(self.rhs)})'
         elif self.op == 'IN':
             phs = ', '.join([placeholder] * len(self.rhs))
-            text = f'("{self.lhs}" {self.op} ({phs}))'
+            text = f'({_quote(self.lhs)} {self.op} ({phs}))'
         else:
-            text = f'("{self.lhs}" {self.op} {placeholder})'
+            text = f'({_quote(self.lhs)} {self.op} {placeholder})'
         return text
 
 
@@ -329,10 +337,17 @@ class CountUnique:
 class Join:
     """Join 2 tables"""
 
-    def __init__(self, name, left_col, op, right_col, how='INNER', alias=None, lhs=None):
+    def __init__(self, name,
+                 left_col=None, op=None, right_col=None,
+                 preds=None,
+                 how='INNER', alias=None, lhs=None):
+        """
+        Use *either* `left_col`, `op`, and `right_col` or `preds`
+        """
         validate_name(name)
-        _validate_column(left_col)
-        _validate_column(right_col)
+        if all((left_col, op, right_col)):
+            _validate_column(left_col)
+            _validate_column(right_col)
         if alias:
             validate_name(alias)
         if lhs:
@@ -346,6 +361,11 @@ class Join:
         self.right_col = right_col
         self.how = how
         self.alias = alias
+        self.values = tuple()
+        self.preds = preds
+        if preds:
+            for pred in self.preds:
+                self.values += pred.values
 
     def __repr__(self):
         return f'Join({self.name}, {self.left_col}, {self.op}, {self.right_col}, {self.how}, {self.alias}, {self.prev_name})'
@@ -367,9 +387,16 @@ class Join:
         if self.alias:
             target += f' AS "{self.alias}"'
             table = f'"{self.alias}"'
-        return (f'{self.how.upper()} JOIN {target}'
-                f' ON "{self.prev_name}"."{self.left_col}"'
-                f' {self.op} {table}."{self.right_col}"')
+        if self.left_col:
+            cond = (f'"{self.prev_name}"."{self.left_col}"'
+                    f' {self.op} {table}."{self.right_col}"')
+        else:
+            pred_list = []
+            for pred in self.preds:
+                tmp = pred.render(placeholder)
+                pred_list.append(tmp)
+            cond = ' AND '.join(pred_list)
+        return f'{self.how.upper()} JOIN {target} ON {cond}'
 
 
 class Query:
@@ -475,6 +502,7 @@ class Query:
                 else:
                     query = f'SELECT DISTINCT * {query}'
             elif isinstance(stage, Join):
+                values += stage.values
                 query = f'{query} {text}'
             elif isinstance(stage, CountUnique):
                 if stage.cols:
