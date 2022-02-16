@@ -411,3 +411,31 @@ def test_init_list_join_filter():
     assert qtext == 'SELECT DISTINCT "baz" FROM "left_table" INNER JOIN "right_table" ON "left_table"."left_col" = "right_table"."right_col" WHERE ("foo" = %s)'
     assert len(values) == 1
     assert values[0] == 'bar'
+
+
+def test_subquery():
+    subquery = Query()
+    subquery.append(Table('my_table'))
+    p1 = Predicate('foo', '>', 0)
+    where = Filter([p1])
+    subquery.append(where)
+
+    query = Query()
+    query.append(subquery)
+    query.append(Group(['baz']))
+    query.append(Aggregation([('SUM', 'foo', 'TotalFoo')]))
+    qtext, values = query.render('%s')
+    assert qtext == r'SELECT "baz", SUM("foo") AS "TotalFoo" FROM (SELECT * FROM "my_table" WHERE ("foo" > %s)) AS s1 GROUP BY "baz"'
+    assert len(values) == 1
+    assert values[0] == 0
+
+
+def test_subquery_in_predicate():
+    subquery = Query('some_view')
+    subquery.append(Projection(['some_ref']))
+
+    query = Query('some-type')
+    query.append(Filter([Predicate('id', 'IN', subquery)]))
+    qtext, values = query.render('%s')
+    assert qtext == r'SELECT * FROM "some-type" WHERE ("id" IN (SELECT "some_ref" FROM "some_view"))'
+    assert len(values) == 0

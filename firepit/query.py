@@ -125,7 +125,7 @@ class Predicate:
                 raise InvalidComparisonOperator(op)  # Maybe need different exception here?
         elif isinstance(self.rhs, (list, tuple)):
             self.values = tuple(self.rhs)
-        elif isinstance(self.rhs, Column):
+        elif isinstance(self.rhs, (Column, Query)):
             self.values = tuple()
         else:
             self.values = (self.rhs, )
@@ -141,8 +141,11 @@ class Predicate:
         elif isinstance(self.rhs, Column):
             text = f'({_quote(self.lhs)} {self.op} {_quote(self.rhs)})'
         elif self.op == 'IN':
-            phs = ', '.join([placeholder] * len(self.rhs))
-            text = f'({_quote(self.lhs)} {self.op} ({phs}))'
+            if isinstance(self.rhs, Query):  # there's probably a better way to detect this
+                rhs, _ = self.rhs.render(placeholder)
+            else:
+                rhs = ', '.join([placeholder] * len(self.rhs))
+            text = f'({_quote(self.lhs)} {self.op} ({rhs}))'
         else:
             text = f'({_quote(self.lhs)} {self.op} {placeholder})'
         return text
@@ -453,6 +456,8 @@ class Query:
                 stage.cols = last.cols
         elif isinstance(stage, Table):
             self.tables.append(stage.name)
+        elif isinstance(stage, Query):
+            self.tables.extend(stage.tables)
         self.stages.append(stage)
 
     def extend(self, stages):
@@ -462,6 +467,7 @@ class Query:
     def render(self, placeholder):
         if not self.tables:
             raise InvalidQuery("no table")  #TODO: better message
+        sub_count = 0  # Count of "sub queries"
         query = ''
         values = ()
         prev = None  # TODO: Probably need state machine here
@@ -509,6 +515,11 @@ class Query:
                     query = f'SELECT {text} {query}'
                 else:
                     query = f'SELECT {text} FROM (SELECT DISTINCT * {query}) AS tmp'
+            elif isinstance(stage, Query):
+                sub_count += 1
+                text, stage_values = stage.render(placeholder)
+                values += stage_values
+                query = f'FROM ({text}) AS s{sub_count}'
             prev = stage
         # If there's no projection...
         if not query.startswith('SELECT'):  # Hacky
