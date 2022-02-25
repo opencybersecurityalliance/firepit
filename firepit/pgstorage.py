@@ -309,7 +309,7 @@ class PgStorage(SqlStorage):
             # that existed at that time.  We need to get the star back, to
             # match SQLite3's behavior.
             otype = self.table_type(viewname)
-            return re.sub(f"SELECT *(\"?{otype}\"?\\.['A-Za-z09_\\.-]+,? *)+ FROM",
+            return re.sub(f"SELECT *(\"?{otype}\"?\\.\"?['A-Za-z0-9_\\.-]+\"?,? *)+ FROM",
                           "SELECT * FROM", stmt)
 
         # Must be a table
