@@ -274,7 +274,7 @@ class Aggregation:
             if col == '*':
                 expr = f'{func}({mod}{col})'  # No quotes for *
             else:
-                expr = f'{func}({mod}"{col}")'
+                expr = f'{func}({mod}{_quote(col)})'
             if not alias:
                 alias = func.lower()
             expr += f' AS "{alias}"'

@@ -908,7 +908,6 @@ class SqlStorage:
                 qry.extend(joins)
             else:
                 group_colnames.append(Column(col, viewname))
-        qry.append(Group(group_colnames))
         if not aggs:
             aggs = []
             sco_type = self.table_type(viewname)
@@ -919,5 +918,17 @@ class SqlStorage:
                 agg = auto_agg_tuple(sco_type, col['name'], col['type'])
                 if agg:
                     aggs.append(agg)
+        else:
+            tmp = []
+            for agg in aggs:
+                func, attr, alias = agg
+                if attr not in columns and attr != '*':
+                    joins, table, colname = self.path_joins(viewname, None, attr)
+                    qry.extend(joins)
+                    tmp.append((func, Column(colname, table), alias))
+                else:
+                    tmp.append(agg)
+            aggs = tmp
+        qry.append(Group(group_colnames))
         qry.append(Aggregation(aggs))
         self.assign_query(newname, qry)

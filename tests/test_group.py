@@ -39,6 +39,29 @@ def test_group_src_dst(fake_bundle_file, tmpdir):
     assert len(groups) == 74
 
 
+def test_group_src_aggs(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
+    store.group('grp_conns', 'conns', by=['src_ref.value'],
+                aggs=[('COUNT', 'dst_ref.value', 'count')])
+    groups = store.lookup('grp_conns')
+    assert len(groups) == 53
+    for group in groups:
+        src = group['src_ref.value']
+        if src == '192.168.216.111':
+            assert group['count'] == 2
+        elif src == '192.168.27.170':
+            assert group['count'] == 2
+        elif src == '192.168.70.186':
+            assert group['count'] == 2
+        elif src == '192.168.90.122':
+            assert group['count'] == 6
+        elif src == '192.168.95.234':
+            assert group['count'] == 1
+
+
 def test_group_src_dst_aggs(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])
