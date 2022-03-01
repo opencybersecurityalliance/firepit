@@ -322,28 +322,14 @@ class PgStorage(SqlStorage):
                              " AND viewname = %s", (self.session_id, viewname))
         viewdef = cursor.fetchone()
         if viewdef:
-            stmt = viewdef['definition'].rstrip(';')
+            stmt = viewdef['definition'].rstrip(';').replace('\n', ' ')
+
             # PostgreSQL will "expand" the original "*" to the columns
             # that existed at that time.  We need to get the star back, to
             # match SQLite3's behavior.
-            logger.debug('"unexpand" stmt %s', stmt)
-            proj, sep, rest = stmt.replace('\n', '').partition('FROM')
-            result = []
-            for part in proj.split(' '):
-                part = part.strip()
-                if part.endswith(','):
-                    continue
-                if part == '':
-                    continue
-                if '.' in part:
-                    table, _, _ = part.partition('.')
-                    part = f'{table}.*'
-                result.append(part.strip('\n'))
-
-            if sep:
-                result.append('FROM')
-                result.append(rest)
-            return ' '.join(result)
+            otype = self.table_type(viewname)
+            return re.sub(f"SELECT *(\"?{otype}\"?\\.\"?['A-Za-z0-9_\\.-]+\"?,? *)+ FROM",
+                          "SELECT * FROM", stmt)
 
         # Must be a table
         return f'SELECT * FROM "{viewname}"'

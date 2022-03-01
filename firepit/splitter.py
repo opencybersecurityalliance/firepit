@@ -114,6 +114,7 @@ class SqlWriter:
     def write_records(self, obj_type, records, schema, replace, query_id):
         tablename = f'{self.prefix}{obj_type}'
         try:
+            self.store.connection.commit()
             cursor = self.store.connection.cursor()
             cursor.execute('BEGIN')
             if replace:
