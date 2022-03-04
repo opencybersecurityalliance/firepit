@@ -1,5 +1,5 @@
 import os
-
+from collections import defaultdict
 from lark import Lark, Transformer, v_args
 
 
@@ -101,6 +101,55 @@ class _TranslateTree(Transformer):
     def start(self, exp, qualifier):
         # For now, drop the qualifier.  Assume the query handled it.
         return f'{exp}'
+
+    def object_path(self, sco_type, prop):
+        return f'{sco_type}:{prop}'
+
+
+def summarize_pattern(pattern):
+    grammar = get_grammar()
+    paths = Lark(grammar,
+                 parser="lalr",
+                 transformer=_SummarizePattern()).parse(pattern)
+    result = defaultdict(set)
+    for path in paths:
+        sco_type, _, prop = path.partition(':')
+        result[sco_type].add(prop)
+    return result
+
+
+@v_args(inline=True)
+class _SummarizePattern(Transformer):
+    def obs_disj(self, lhs, rhs):
+        return lhs | rhs
+
+    def obs_conj(self, lhs, rhs):
+        return lhs & rhs
+
+    def comp_grp(self, exp):
+        return exp
+
+    def simple_comp_exp(self, lhs, _op, _rhs):
+        return {lhs}
+
+    def comp_disj(self, lhs, rhs):
+        return lhs | rhs
+
+    def comp_conj(self, lhs, rhs):
+        return lhs | rhs  # Still want union here
+
+    # None of these actually matter
+    def op(self, _op):
+        return None
+
+    def quoted_str(self, _value):
+        return None
+
+    def lit_list(self, *args):
+        return None
+
+    def start(self, exp, _qualifier):
+        return exp
 
     def object_path(self, sco_type, prop):
         return f'{sco_type}:{prop}'
