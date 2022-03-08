@@ -1,6 +1,7 @@
 import pytest
 
 from firepit.stix20 import stix2sql
+from firepit.stix20 import summarize_pattern
 
 
 def _normalize_ws(s):
@@ -50,3 +51,24 @@ def _normalize_ws(s):
 )
 def test_stix2sql(sco_type, pattern, where):
     assert where == _normalize_ws(stix2sql(pattern, sco_type))
+
+
+@pytest.mark.parametrize(
+    'pattern, expected', [
+        ("[ipv4-addr:value = '9.9.9.9']", {"ipv4-addr":{"value"}}),
+        ("[url:value LIKE '%blah%']", {"url":{"value"}}),
+        ("[process:pid IN (1, 2, 3)]", {"process":{"pid"}}),
+        ("[ipv4-addr:value = '9.9.9.9' OR url:value = 'http://example.com/foo']",
+         {"ipv4-addr": {"value"}, "url": {"value"}}),
+        ("[process:command_line LIKE '% -x' AND process:name = 'foo.exe']",
+         {"process": {"command_line", "name"}}),
+        ("[url:value LIKE '%blah%'] START t'2017-05-01T18:54:01.000Z' STOP t'2017-05-01T20:27:08.000Z'",
+         {"url":{"value"}}),
+        ("[network-traffic:dst_port < 10000]", {"network-traffic": {"dst_port"}}),
+    ]
+)
+def test_summarize_pattern(pattern, expected):
+    summary = summarize_pattern(pattern)
+    for k, v in summary.items():
+        print(k, v)
+    assert summarize_pattern(pattern) == expected
