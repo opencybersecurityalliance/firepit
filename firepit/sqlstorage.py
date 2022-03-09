@@ -99,6 +99,10 @@ class SqlStorage:
         stmt = ('CREATE TABLE IF NOT EXISTS "__queries" '
                 '(sco_id TEXT, query_id TEXT);')
         self._execute(stmt, cursor)
+        stmt = ('CREATE TABLE IF NOT EXISTS "__contains" '
+                '(source_ref TEXT, target_ref TEXT, x_firepit_rank,'
+                ' UNIQUE(source_ref, target_ref) ON CONFLICT IGNORE);')
+        self._execute(stmt, cursor)
         self.connection.commit()
         cursor.close()
 
