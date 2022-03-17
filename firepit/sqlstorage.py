@@ -819,7 +819,13 @@ class SqlStorage:
             count = self.count(viewname)
         return count
 
-    def timestamped(self, viewname, path=None, value=None, timestamp='first_observed'):
+    def timestamped(
+            self,
+            viewname,
+            path=None,
+            value=None,
+            timestamp='first_observed',
+            limit=None):
         """
         Get the timestamped observations of `value` in `viewname`.`path`
         Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
@@ -838,27 +844,34 @@ class SqlStorage:
             Join('observed-data', 'source_ref', '=', 'id')
         ])
         table = viewname
-        column = path
         if path:
+            if isinstance(path, (list, tuple)):
+                paths = path
+                column = None
+            else:
+                paths = [path]
+                column = path
+        else:
+            paths = []
+            column = None
+        proj = []
+        for path in paths:
+            if path == '*':
+                continue
             joins, table, column = self.path_joins(viewname, None, path)
             qry.extend(joins)
+            proj.append(Column(column, table, path))
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
         qry.append(Order([timestamp]))
-        if column:
+        if proj:
             qry.append(
-                Projection([
-                    Column(timestamp, 'observed-data'),
-                    Column(column, table)
-                ])
+                Projection(
+                    [Column(timestamp, 'observed-data')] + proj
+                )
             )
-        else:
-            qry.append(
-                Projection([
-                    Column(timestamp, 'observed-data'),
-                    Column('*', table)
-                ])
-            )
+        if limit:
+            qry.append(Limit(limit))
         cursor = self.run_query(qry)
         res = cursor.fetchall()
         cursor.close()

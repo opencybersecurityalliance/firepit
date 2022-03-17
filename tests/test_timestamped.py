@@ -8,6 +8,14 @@ def test_timestamped_url(tmpdir, fake_bundle_file):
     assert len(timestamped) == 31
 
 
+def test_timestamped_url_only(tmpdir, fake_bundle_file):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', fake_bundle_file)
+    timestamped = store.timestamped('url', ['value'])
+    assert len(timestamped) == 31
+    assert set(timestamped[0].keys()) == {'first_observed', 'value'}
+
+
 def test_timestamped_ipv4(tmpdir, fake_bundle_file):
     store = tmp_storage(tmpdir)    
     store.cache('q1', fake_bundle_file)

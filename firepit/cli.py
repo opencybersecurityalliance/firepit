@@ -341,15 +341,16 @@ def number_observed(
 @app.command()
 def timestamped(
     name: str = typer.Argument(..., help="View name to look up"),
-    column: str = typer.Argument(None, help="Column to tabulate"),
+    column: List[str] = typer.Argument(None, help="Column(s) to tabulate"),
     value: str = typer.Option(None, help="Column value to filter for"),
     timestamp: str = typer.Option('first_observed',
                                   help="Timestamp to use [first_observed, last_observed]"),
+    limit: int = typer.Option(None, help="Max number of rows to return"),
     format: str = typer.Option('table', help=format_help),
 ):
     """Retrieve the timestamped values of a column from a view"""
     db = get_storage(state['dbname'], state['session'])
-    rows = db.timestamped(name, column, value, timestamp)
+    rows = db.timestamped(name, column, value, timestamp, limit)
     print_rows(rows, format)
 
 
