@@ -825,7 +825,8 @@ class SqlStorage:
             path=None,
             value=None,
             timestamp='first_observed',
-            limit=None):
+            limit=None,
+            run=True):
         """
         Get the timestamped observations of `value` in `viewname`.`path`
         Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
@@ -872,9 +873,13 @@ class SqlStorage:
             )
         if limit:
             qry.append(Limit(limit))
-        cursor = self.run_query(qry)
-        res = cursor.fetchall()
-        cursor.close()
+
+        if run:
+            cursor = self.run_query(qry)
+            res = cursor.fetchall()
+            cursor.close()
+        else:
+            res = qry
         return res
 
     def summary(self, viewname, path=None, value=None):
@@ -894,11 +899,14 @@ class SqlStorage:
             qry.extend(joins)
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
+        first_observed = Column('first_observed', 'observed-data')
+        last_observed = Column('last_observed', 'observed-data')
+        number_observed = Column('number_observed', 'observed-data')
         qry.append(
             Aggregation([
-                ('MIN', 'first_observed', 'first_observed'),
-                ('MAX', 'last_observed', 'last_observed'),
-                ('SUM', 'number_observed', 'number_observed'),
+                ('MIN', first_observed, 'first_observed'),
+                ('MAX', last_observed, 'last_observed'),
+                ('SUM', number_observed, 'number_observed'),
             ])
         )
         res = self._query_one(qry)

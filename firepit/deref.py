@@ -125,9 +125,9 @@ def _dfs(store, sco_type, parent=None, ref=None, all_types=None, ignore=None):
     ignore_props = ignore.get(sco_type, [])
     for prop in props:
         if prop.endswith("_ref") and prop not in ignore_props:
-            rtypes = set(ref_type(sco_type, get_last(prop))) & all_types
-            ptype = list(rtypes)[0]
-            if ptype != sco_type:
+            rtypes = list(set(ref_type(sco_type, get_last(prop))) & all_types)
+            ptype = rtypes[0] if rtypes else None
+            if ptype and ptype != sco_type:
                 _dfs(store, ptype, parent=node, ref=prop, all_types=all_types, ignore=ignore)
     return node
 

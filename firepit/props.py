@@ -137,7 +137,8 @@ def ref_type(sco_type, part):
         return ['email-addr']
 
     # TODO: hueristics/classifier to guess?
-    raise NotImplementedError(f'{sco_type}:{part}')  # TEMP
+    #raise NotImplementedError(f'{sco_type}:{part}')  # TEMP
+    return []
 
 
 def is_ref(name):
