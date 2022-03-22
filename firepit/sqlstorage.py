@@ -724,22 +724,18 @@ class SqlStorage:
         Create a new view `viewname` defined by `query`
         """
         # Deduce SCO type and "deps" of viewname from query
-        deps = []
-        group_cols = []
-        group_pos = None
-        found_agg = False
-        for i, stage in enumerate(query.stages):
-            if isinstance(stage, Table):
-                # Assume first Table?  Might not work for complex queries or joins
-                on = stage.name
-                if not sco_type:
-                    sco_type = self.table_type(on)
-                deps = [on]
-            elif isinstance(stage, Aggregation):
-                found_agg = True
-            elif isinstance(stage, Group):
-                group_cols = stage.cols
-                group_pos = i
+        on = query.table.name
+        deps = [on]
+        if not sco_type:
+            sco_type = self.table_type(on)
+        if query.aggs:
+            found_agg = True
+        else:
+            found_agg = False
+        if query.groupby:
+            group_cols = query.groupby.cols
+        else:
+            group_cols = []
 
         # if no aggs supplied, do "auto aggregation"
         if group_cols and not found_agg and sco_type:
@@ -753,8 +749,7 @@ class SqlStorage:
                 if agg:
                     aggs.append(agg)
             agg = Aggregation(aggs)
-            agg.group_cols = group_cols  #FIXME: how to alias?  Maybe table stack?
-            query.stages.insert(group_pos, agg)  # Nasty
+            query.aggs = agg
 
         query_text, query_values = query.render('{}')
         formatted_values = [f"'{v}'" if isinstance(v, str) else v for v in query_values]

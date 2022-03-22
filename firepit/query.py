@@ -3,8 +3,6 @@
 from firepit.validate import validate_name
 from firepit.validate import validate_path
 
-import re
-
 COMP_OPS = ['=', '<>', '!=', '<', '>', '<=', '>=', 'LIKE', 'IN', 'IS', 'IS NOT']
 PRED_OPS = ['AND', 'OR']
 JOIN_TYPES = ['INNER', 'OUTER', 'LEFT OUTER', 'CROSS']
@@ -93,7 +91,7 @@ class CoalescedColumn:
         self.alias = alias
 
     def __str__(self):
-        result = ', '.join([name for name in self.names])
+        result = ', '.join(self.names)
         result = f'COALESCE({result}) AS "{self.alias}"'
         return result
 
@@ -403,125 +401,159 @@ class Join:
 
 
 class Query:
-    def __init__(self, arg=None):
-        self.stages = []
-        self.tables = []  # Treat like a stack
-        if isinstance(arg, str):
-            self.append(Table(arg))
-        elif isinstance(arg, list):
-            for stage in arg:
-                self.append(stage)
+    """
+    SQL Query statement
 
-    def last_stage(self):
-        return self.stages[-1] if self.stages else None
+    SQL order of evaluations:
+    FROM, including JOINs
+    WHERE
+    GROUP BY
+    HAVING
+    WINDOW functions
+    SELECT (projection)
+    DISTINCT
+    UNION
+    ORDER BY
+    LIMIT and OFFSET
+    """
+    def __init__(self, arg=None):
+        self.table = None
+        self.joins = []
+        self.where = []
+        self.groupby = None
+        self.aggs = None
+        self.having = []
+        #Not supported: windows
+        self.proj = None  # Make a list of Projections?
+        self.distinct = False
+        self.count = False  # FIXME: isn't this an aggregation?
+        # TODO: self.union = []
+        self.order = None
+        self.limit = None
+        self.offset = 0
+        if isinstance(arg, str):
+            self.table = Table(arg)
+        elif isinstance(arg, Table):
+            self.table = arg
+        elif isinstance(arg, list):
+            self.extend(arg)
 
     def append(self, stage):
-        if isinstance(stage, Aggregation):
-            # If there's already a Projection, that's an error
-            for prev in self.stages:
-                if isinstance(prev, Projection):
-                    raise InvalidQuery('cannot have Aggregation after Projection')
-            if self.stages:
-                last = self.last_stage()
-                if isinstance(last, Group):
-                    stage.group_cols = last.cols  # Copy grouped columns
+        if isinstance(stage, Table):
+            self.table = stage
         elif isinstance(stage, Join):
-            # Need to look back and grab previous table name
-            last = self.last_stage()
-            if isinstance(last, Join):
-                if last == stage:
-                    return  # It's redundant
-            if isinstance(last, (Table, Join)):  #TODO: use table stack
-                if not stage.prev_name:
-                    stage.prev_name = last.name
-            else:
+            if not self.table:
                 raise InvalidQuery('Join must follow Table or Join')
+            self.joins.append(stage)
+        elif isinstance(stage, Filter):
+            if self.groupby:
+                self.having.append(stage)
+            else:
+                self.where.append(stage)
+        elif isinstance(stage, Group):
+            self.groupby = stage
+        elif isinstance(stage, Aggregation):
+            # If there's already a Projection, that's an error
+            if self.proj:
+                raise InvalidQuery('cannot have Aggregation after Projection')
+            self.aggs = stage
+        elif isinstance(stage, Projection):
+            self.proj = stage
         elif isinstance(stage, Count):
-            # See if we can combine with previous stages
-            last = self.last_stage()
-            if isinstance(last, Unique):
-                self.stages.pop(-1)
-                cols = None
-                if self.stages:
-                    last = self.last_stage()
-                    if isinstance(last, Projection):
-                        proj = self.stages.pop(-1)
-                        cols = proj.cols
-                stage = CountUnique(cols)
+            self.count = stage
+        elif isinstance(stage, Unique):
+            self.distinct = True
         elif isinstance(stage, CountUnique):
-            # See if we can combine with previous stages
-            last = self.last_stage()
-            if isinstance(last, Projection):
-                self.stages.pop(-1)
-                stage.cols = last.cols
-        elif isinstance(stage, Table):
-            self.tables.append(stage.name)
+            self.count = Count()
+            self.distinct = True
+        elif isinstance(stage, Order):
+            self.order = stage
+        elif isinstance(stage, Limit):
+            self.limit = stage
+        elif isinstance(stage, Offset):
+            self.offset = stage
         elif isinstance(stage, Query):
-            self.tables.extend(stage.tables)
-        self.stages.append(stage)
+            if not self.table:
+                self.table = stage
+            #TODO: else?
 
     def extend(self, stages):
         for stage in stages:
             self.append(stage)
 
     def render(self, placeholder):
-        if not self.tables:
+        if not self.table:
             raise InvalidQuery("no table")  #TODO: better message
+        result_cols = ''
         sub_count = 0  # Count of "sub queries"
-        query = ''
         values = ()
-        prev = None  # TODO: Probably need state machine here
-        for stage in self.stages:
-            text = stage.render(placeholder)
-            if isinstance(stage, Table):
-                query = f'FROM "{text}"'
-            elif isinstance(stage, Projection):
-                query = f'SELECT {text} {query}'
-            elif isinstance(stage, Filter):
-                values += stage.values
-                if isinstance(prev, Aggregation):
-                    keyword = 'HAVING'
-                elif isinstance(prev, Filter):
-                    keyword = 'AND'
-                else:
-                    keyword = 'WHERE'
-                query = f'{query} {keyword} {text}'
-            elif isinstance(stage, Group):
-                query = f'{query} GROUP BY {text}'
-            elif isinstance(stage, Aggregation):
-                query = f'SELECT {text} {query}'
-            elif isinstance(stage, Order):
-                query = f'{query} ORDER BY {text}'
-            elif isinstance(stage, Limit):
-                query = f'{query} LIMIT {text}'
-            elif isinstance(stage, Offset):
+        text = self.table.render(placeholder)
+        if isinstance(text, tuple):
+            text, values = text
+            sub_count += 1
+            query = f'FROM ({text}) AS s{sub_count}'
+        else:
+            query = f'FROM "{text}"'
+        for i, join in enumerate(self.joins):
+            # prev_name stuff is a hack
+            if not join.prev_name:
+                join.prev_name = self.table.name if i == 0 else self.joins[i - 1].name
+            values += join.values
+            text = join.render(placeholder)
+            query = f'{query} {text}'
+        filts = []
+        for filt in self.where:
+            values += filt.values
+            filts.append(filt.render(placeholder))
+        if filts:
+            where = ' AND '.join(filts)
+            query = f'{query} WHERE {where}'
+        if self.groupby:
+            text = self.groupby.render(placeholder)
+            query = f'{query} GROUP BY {text}'
+            # Add group cols to result set automatically
+            if result_cols:
+                result_cols += ', '
+            result_cols += ', '.join([_quote(col) for col in self.groupby.cols])
+        filts = []
+        for filt in self.having:
+            values += filt.values
+            filts.append(filt.render(placeholder))
+        if filts:
+            where = ' AND '.join(filts)
+            query = f'{query} HAVING {where}'
+
+        # Projection and Aggregation both add columns to result set
+        if self.aggs:
+            if result_cols:
+                result_cols += ', '
+            result_cols += self.aggs.render(placeholder)
+        if self.proj:
+            if result_cols:
+                result_cols += ', '
+            result_cols = self.proj.render(placeholder)
+        if not result_cols:
+            result_cols = '*'
+
+        if self.distinct and self.count and result_cols == '*':
+            query = f'COUNT(*) AS "count" FROM (SELECT DISTINCT * {query}) AS tmp'
+        elif self.distinct and self.count:
+            query = f'COUNT(DISTINCT {result_cols}) AS "count" {query}'
+        elif self.distinct:
+            query = f'DISTINCT {result_cols} {query}'
+        elif self.count:
+            query = f'COUNT({result_cols}) AS "count" {query}'
+        else:
+            query = f'{result_cols} {query}'
+
+        if self.order:
+            text = self.order.render(placeholder)
+            query = f'{query} ORDER BY {text}'
+        if self.limit:
+            text = self.limit.render(placeholder)
+            query = f'{query} LIMIT {text}'
+            if self.offset:
+                text = self.offset.render(placeholder)
                 query = f'{query} OFFSET {text}'
-            elif isinstance(stage, Count):
-                if isinstance(prev, Unique):
-                    # Should have already been combined, so we should never hit this
-                    query = f'SELECT {text} FROM ({query}) AS tmp'
-                else:
-                    query = f'SELECT {text} {query}'
-            elif isinstance(stage, Unique):
-                if query.startswith('SELECT '):
-                    query = re.sub(r'^SELECT ', 'SELECT DISTINCT ', query)
-                else:
-                    query = f'SELECT DISTINCT * {query}'
-            elif isinstance(stage, Join):
-                values += stage.values
-                query = f'{query} {text}'
-            elif isinstance(stage, CountUnique):
-                if stage.cols:
-                    query = f'SELECT {text} {query}'
-                else:
-                    query = f'SELECT {text} FROM (SELECT DISTINCT * {query}) AS tmp'
-            elif isinstance(stage, Query):
-                sub_count += 1
-                text, stage_values = stage.render(placeholder)
-                values += stage_values
-                query = f'FROM ({text}) AS s{sub_count}'
-            prev = stage
-        # If there's no projection...
-        if not query.startswith('SELECT'):  # Hacky
-            query = 'SELECT * ' + query
+        query = f'SELECT {query}'
         return query, values
