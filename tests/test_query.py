@@ -50,6 +50,23 @@ def test_predicate_nulls(lhs, op, rhs, expected_text):
 
 
 @pytest.mark.parametrize(
+    'lhs, op, rhs, expected_text, values', [
+        (Predicate('foo', '>', 5), 'AND', Predicate('bar', 'LIKE', 'baz%'),
+         '(("foo" > ?) AND ("bar" LIKE ?))', (5, "baz%")),
+        (Predicate('foo', '=', 5), 'OR',
+         Predicate('bar', 'IN',
+                   Query([Table('my_table'), Filter([Predicate('blah', '=', 0)]), Projection(['blah'])])),
+         '(("foo" = ?) OR ("bar" IN (SELECT "blah" FROM "my_table" WHERE ("blah" = ?))))', (5, 0)),
+    ]
+)
+def test_complex_predicate(lhs, op, rhs, expected_text, values):
+    p1 = Predicate(lhs, op, rhs)
+    text = p1.render('?')
+    assert text == expected_text
+    assert p1.values == values
+
+
+@pytest.mark.parametrize(
     'lhs, op, rhs', [
         ('foo', 'asdf', 99),
         ('bar', 6, 99),

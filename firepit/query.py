@@ -33,6 +33,10 @@ class InvalidPredicateOperator(Exception):
     pass
 
 
+class InvalidPredicateOperand(Exception):
+    pass
+
+
 class InvalidJoinOperator(Exception):
     pass
 
@@ -97,38 +101,53 @@ class CoalescedColumn:
 
 
 class Predicate:
-    """Simple row value predicate"""
+    """Row value predicate"""
 
     def __init__(self, lhs, op, rhs):
-        if op not in COMP_OPS:
-            raise InvalidComparisonOperator(op)
-        if rhs is None:
-            rhs = 'NULL'
-        if lhs.endswith('[*]'):  # STIX list property
-            lhs = lhs[:-3]
-            if rhs.lower() != 'null':
-                rhs = f"%{rhs}%"  # wrap with SQL wildcards since list is encoded as string
-                if op == '=':
-                    op = 'LIKE'
-                elif op == '!=':
-                    op = 'NOT LIKE'
-        if isinstance(lhs, str):
-            validate_path(lhs)
+        if isinstance(lhs, Predicate):
+            if op not in PRED_OPS:
+                raise InvalidPredicateOperator(op)
+            if not isinstance(rhs, Predicate):
+                raise InvalidPredicateOperand(str(rhs))
+            self.values = lhs.values + rhs.values
+        else:
+            if op not in COMP_OPS:
+                raise InvalidComparisonOperator(op)
+            if rhs is None:
+                rhs = 'NULL'
+            if lhs.endswith('[*]'):  # STIX list property
+                lhs = lhs[:-3]
+                if rhs.lower() != 'null':
+                    rhs = f"%{rhs}%"  # wrap with SQL wildcards since list is encoded as string
+                    if op == '=':
+                        op = 'LIKE'
+                    elif op == '!=':
+                        op = 'NOT LIKE'
+            if isinstance(lhs, str):
+                validate_path(lhs)
+            if rhs in ['null', 'NULL']:
+                self.values = ()
+                if op not in ['=', '!=', '<>', 'IS', 'IS NOT']:
+                    raise InvalidComparisonOperator(op)  # Maybe need different exception here?
+            elif isinstance(rhs, (list, tuple)):
+                self.values = tuple(rhs)
+            elif isinstance(rhs, Column):
+                self.values = tuple()
+            elif isinstance(rhs, Query):
+                _, self.values = rhs.render('IGNORED')
+            else:
+                self.values = (rhs, )
         self.lhs = lhs
         self.op = op
         self.rhs = rhs
-        if self.rhs in ['null', 'NULL']:
-            self.values = ()
-            if op not in ['=', '!=', '<>', 'IS', 'IS NOT']:
-                raise InvalidComparisonOperator(op)  # Maybe need different exception here?
-        elif isinstance(self.rhs, (list, tuple)):
-            self.values = tuple(self.rhs)
-        elif isinstance(self.rhs, (Column, Query)):
-            self.values = tuple()
-        else:
-            self.values = (self.rhs, )
 
     def render(self, placeholder):
+        if isinstance(self.lhs, Predicate):
+            text = self.lhs.render(placeholder)
+            text += f' {self.op} '
+            text += self.rhs.render(placeholder)
+            return f'({text})'  # Do we really need parens?
+
         if self.rhs in ['null', 'NULL']:
             if self.op in ['!=', '<>']:
                 text = f'({_quote(self.lhs)} IS NOT NULL)'
@@ -503,8 +522,8 @@ class Query:
             query = f'{query} {text}'
         filts = []
         for filt in self.where:
-            values += filt.values
             filts.append(filt.render(placeholder))
+            values += filt.values
         if filts:
             where = ' AND '.join(filts)
             query = f'{query} WHERE {where}'
