@@ -546,13 +546,3 @@ def transform(ops, filename):
             results = [obj]
         for result in results:
             yield result
-
-
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser('raft - streaming operations on STIX')
-    parser.add_argument('op', metavar='OP')
-    parser.add_argument('filename', metavar='FILENAME')
-    args = parser.parse_args()
-    for result in transform(args.op.split(','), args.filename):
-        print(str(orjson.dumps(result), 'utf-8'))

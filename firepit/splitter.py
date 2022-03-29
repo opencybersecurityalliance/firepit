@@ -4,7 +4,6 @@ from collections import OrderedDict, defaultdict
 
 import orjson
 
-from firepit import raft
 from firepit.exceptions import DuplicateTable
 
 
@@ -255,38 +254,3 @@ class SplitWriter:
                 if recs:
                     # We've already added any necessary tables or columns
                     self.writer.write_records(obj_type, recs, self.schemas[obj_type], self.replace, self.query_id)
-
-
-#TODO: remove this (maybe move into a command in cli.py?)
-if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s: %(message)s', level=logging.DEBUG)
-    import argparse
-    parser = argparse.ArgumentParser('Split STIX bundles by object type')
-    parser.add_argument('-d', '--directory', metavar='DIR', default='.')
-    parser.add_argument('-f', '--format', metavar='FMT', default='json')
-    parser.add_argument('-b', '--batchsize', metavar='N', default=100, type=int)
-    parser.add_argument('-p', '--prefix', metavar='PREFIX', default='test_')
-    parser.add_argument('-n', '--dbname', metavar='DBNAME', default='test.db')
-    parser.add_argument('ops', metavar='OP,...')
-    parser.add_argument('filename', metavar='FILENAME', nargs='+')
-    args = parser.parse_args()
-
-    if args.format == 'json':
-        writer = JsonWriter(args.directory)
-    elif args.format in ['sql', 'sqlite', 'sqlite3']:
-        from firepit.sqlitestorage import SQLiteStorage
-        store = SQLiteStorage(args.dbname)
-        writer = store._get_writer()  # SqlWriter(args.directory, store, prefix=args.prefix)
-    else:
-        raise NotImplementedError(args.format)
-
-    splitter = SplitWriter(writer, batchsize=args.batchsize)
-    from pyinstrument import Profiler
-    profiler = Profiler()
-    profiler.start()
-    for f in args.filename:
-        for result in raft.transform(args.ops.split(','), f):
-            splitter.write(result)
-    profiler.stop()
-    print(profiler.output_text(unicode=True, color=True))
-    splitter.close()
