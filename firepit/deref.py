@@ -78,7 +78,8 @@ def auto_deref(store, view, ignore=None):
         # view is probably an aggregate; bail
         return [], None
     for col in cols:
-        if not col.endswith("_ref"):
+        if (not col.endswith("_ref") or
+            view == 'relationship' and col in ('source_ref' ,'target_ref')):
             proj.append(Column(col, view))
     all_types = set(store.types())
     mixed_ips = ('ipv4-addr' in all_types and 'ipv6-addr' in all_types)
