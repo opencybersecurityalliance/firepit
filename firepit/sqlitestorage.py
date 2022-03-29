@@ -50,10 +50,16 @@ class SQLiteStorage(SqlStorage):
         # Create function for SQL MATCH
         self.connection.create_function("match", 2, _match)
 
-        # Do DB initization
-        cursor = self.connection.cursor()
-        cursor.execute('BEGIN;')
-        self._initdb(cursor)
+        cursor = self.connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='__queries'")
+        rows = cursor.fetchall()
+        if len(rows) == 1:
+            # Attaching to existing DB
+            self._checkdb()
+        else:
+            # Do DB initization
+            cursor.execute('BEGIN;')
+            self._initdb(cursor)
         cursor.close()
 
     def _get_writer(self, **kwargs):

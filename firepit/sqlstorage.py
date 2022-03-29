@@ -8,6 +8,7 @@ import ujson
 from firepit import raft
 from firepit.deref import auto_deref
 from firepit.deref import unresolve
+from firepit.exceptions import DatabaseMismatch
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import InvalidObject
@@ -36,6 +37,8 @@ from firepit.stix20 import stix2sql
 from firepit.stix21 import makeid
 from firepit.validate import validate_name
 from firepit.validate import validate_path
+
+DB_VERSION = "2"
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +96,9 @@ class SqlStorage:
 
     def _initdb(self, cursor):
         """Do some initial DB setup"""
+        stmt = ('CREATE TABLE IF NOT EXISTS "__metadata" '
+                '(name TEXT, value TEXT);')
+        self._execute(stmt, cursor)
         stmt = ('CREATE TABLE IF NOT EXISTS "__symtable" '
                 '(name TEXT, type TEXT, appdata TEXT);')
         self._execute(stmt, cursor)
@@ -103,8 +109,26 @@ class SqlStorage:
                 '(source_ref TEXT, target_ref TEXT, x_firepit_rank,'
                 ' UNIQUE(source_ref, target_ref) ON CONFLICT IGNORE);')
         self._execute(stmt, cursor)
+        self._set_meta(cursor, 'dbversion', DB_VERSION)
         self.connection.commit()
         cursor.close()
+
+    def _checkdb(self):
+        dbversion = 0
+        stmt = f'SELECT value FROM "__metadata" WHERE name = \'dbversion\''
+        try:
+            cursor = self._query(stmt)
+        except UnknownViewname:
+            raise DatabaseMismatch(dbversion, DB_VERSION)
+        res = cursor.fetchone()
+        dbversion = res['value'] if res else ""
+        if dbversion != DB_VERSION:
+            raise DatabaseMismatch(dbversion, DB_VERSION)
+
+    def _set_meta(self, cursor, name, value):
+        stmt = ('INSERT INTO "__metadata" (name, value)'
+                f' VALUES ({self.placeholder}, {self.placeholder});')
+        cursor.execute(stmt, (name, value))
 
     def _new_name(self, cursor, name, sco_type):
         stmt = ('INSERT INTO "__symtable" (name, type)'

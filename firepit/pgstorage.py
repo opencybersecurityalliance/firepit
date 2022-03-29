@@ -13,6 +13,7 @@ from firepit.exceptions import InvalidAttr
 from firepit.exceptions import UnexpectedError
 from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
+from firepit.sqlstorage import DB_VERSION
 from firepit.sqlstorage import SqlStorage
 from firepit.sqlstorage import infer_type
 from firepit.sqlstorage import validate_name
@@ -148,6 +149,8 @@ class PgStorage(SqlStorage):
         done = list(res.values())[0] if res else False
         if not done:
             self._setup()
+        else:
+            self._checkdb()
 
         logger.debug("Connection to PostgreSQL DB %s successful", dbname)
 
@@ -177,12 +180,20 @@ class PgStorage(SqlStorage):
         cursor = self._execute('BEGIN;')
         try:
             # Do DB initization from base class
+            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__metadata" '
+                    '(name TEXT, value TEXT);')
+            self._execute(stmt, cursor)
             stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
                     '(name TEXT, type TEXT, appdata TEXT);')
             self._execute(stmt, cursor)
             stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__queries" '
                     '(sco_id TEXT, query_id TEXT);')
             self._execute(stmt, cursor)
+            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__contains" '
+                    '(source_ref TEXT, target_ref TEXT, x_firepit_rank INTEGER,'
+                    ' UNIQUE(source_ref, target_ref));')
+            self._execute(stmt, cursor)
+            self._set_meta(cursor, 'dbversion', DB_VERSION)
             self.connection.commit()
             cursor.close()
         except (psycopg2.errors.DuplicateFunction, psycopg2.errors.UniqueViolation):
@@ -410,6 +421,8 @@ class PgStorage(SqlStorage):
                 if excluded:
                     action = f'UPDATE SET {excluded}'
             stmt += f' ON CONFLICT (id) DO {action}'
+        elif tablename == '__contains':
+            stmt += ' ON CONFLICT DO NOTHING'
         values = []
         query_values = []
         for obj in objs:
@@ -448,6 +461,8 @@ class PgStorage(SqlStorage):
                 if excluded:
                     action = f'UPDATE SET {excluded}'
             stmt += f'  ON CONFLICT (id) DO {action}'
+        elif tablename == '__contains':
+            stmt += ' ON CONFLICT DO NOTHING'
         cursor.execute(stmt)
 
         # Don't need the temp table anymore
