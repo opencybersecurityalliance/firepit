@@ -3,7 +3,6 @@ import re
 import uuid
 
 import orjson
-import ujson
 
 from firepit import raft
 from firepit.deref import auto_deref
@@ -115,7 +114,7 @@ class SqlStorage:
 
     def _checkdb(self):
         dbversion = 0
-        stmt = f'SELECT value FROM "__metadata" WHERE name = \'dbversion\''
+        stmt = 'SELECT value FROM "__metadata" WHERE name = \'dbversion\''
         try:
             cursor = self._query(stmt)
         except UnknownViewname:
@@ -752,10 +751,7 @@ class SqlStorage:
         deps = [on]
         if not sco_type:
             sco_type = self.table_type(on)
-        if query.aggs:
-            found_agg = True
-        else:
-            found_agg = False
+        found_agg = bool(query.aggs)
         if query.groupby:
             group_cols = query.groupby.cols
         else:
@@ -911,10 +907,9 @@ class SqlStorage:
             Join('__contains', 'id', '=', 'target_ref'),
             Join('observed-data', 'source_ref', '=', 'id')
         ])
-        table = viewname
         column = path
         if path:
-            joins, table, column = self.path_joins(viewname, None, path)
+            joins, _, column = self.path_joins(viewname, None, path)
             qry.extend(joins)
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))

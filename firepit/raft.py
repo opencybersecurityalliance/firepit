@@ -99,7 +99,6 @@ def preserve(obj):
 
 def promote(obj):
     '''Given an Observation, "promote" contained SCOs to top level'''
-    # TODO: also "promote"/synthesize SROs for references?
     observables = obj['objects']
     oid = obj['id']
     object_refs = []
@@ -142,7 +141,7 @@ def makeid(obj):
     Add unique object IDs to SCOs inside an Observation SDO
     '''
     observables = obj.get('objects', {})
-    for idx, obs in observables.items():
+    for _, obs in observables.items():
         _set_id(obs)
     return obj
 
@@ -296,7 +295,7 @@ def _rank(results, sco_id, rank):
     """Set rank on __contains relationship for SCO"""
     for result in results:
         if result['type'] == '__contains' and result['target_ref'] == sco_id:
-            result['x_firepit_rank'] = 1
+            result['x_firepit_rank'] = rank
 
 
 
@@ -381,7 +380,7 @@ def flatten(obs):
                     # only mark the root (think process:parent_ref)
                     if scos[idx]['type'] == scos[val]['type']:
                         _mark_tree(scos, val, reffed)
-                    elif (scos[val]['type'].endswith('-addr')):
+                    elif scos[val]['type'].endswith('-addr'):
                         if 'dst_' in prop:
                             # For src/dst pairs, consider the src as the root (so add dst to reffed)
                             reffed.add(val)
@@ -498,7 +497,7 @@ def markroot(obj):
                 # only mark the root (think process:parent_ref)
                 if objs[idx]['type'] == objs[val]['type']:
                     _mark_tree(objs, val, reffed)
-                elif (objs[val]['type'].endswith('-addr')):
+                elif objs[val]['type'].endswith('-addr'):
                     if 'dst_' in attr:
                         # For src/dst pairs, consider the src as the root (so add dst to reffed)
                         reffed.add(val)
