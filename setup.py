@@ -30,7 +30,8 @@ setup(
     author_email='pcoccoli@us.ibm.com',
     python_requires='>=3.7',
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
+        'Topic :: Security',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: Apache Software License',
         'Natural Language :: English',
@@ -50,7 +51,7 @@ setup(
     license="Apache Software License 2.0",
     long_description=readme + '\n\n' + history,
     include_package_data=True,
-    keywords='firepit',
+    keywords='stix stix-shifter sql python',
     name='firepit',
     packages=find_packages(include=['firepit', 'firepit.*']),
     setup_requires=setup_requirements,
