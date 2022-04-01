@@ -210,6 +210,9 @@ def flatten(obs):
     if obs.get('spec_version', '2.0') == '2.1':
         return flatten_21(obs)
 
+    if 'objects' not in obs:
+        return [obs]
+
     scos = obs['objects']
     ref_map = {}
     results = [obs]
