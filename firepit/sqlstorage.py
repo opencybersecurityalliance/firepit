@@ -791,7 +791,11 @@ class SqlStorage:
             Table(viewname),
             Join('__contains', 'id', '=', 'target_ref'),
             Join('observed-data', 'source_ref', '=', 'id'),
-            Group([column]),
+        ])
+        joins, table, col = self.path_joins(viewname, None, path)
+        qry.extend(joins)
+        qry.extend([
+            Group([Column(col, table, path)]),
             Aggregation([('COUNT', '*', 'count')])
         ])
         cursor = self.run_query(qry)
