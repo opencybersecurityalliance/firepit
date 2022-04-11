@@ -242,6 +242,7 @@ class SqlStorage:
 
     def path_joins(self, viewname, sco_type, column):
         """Determine if `column` has implicit Joins and return them if so"""
+        logger.warning("path_joins: %s, %s, %s", viewname, sco_type, column)
         if not sco_type:
             sco_type = self.table_type(viewname)
         aliases = {sco_type: viewname}
@@ -316,7 +317,7 @@ class SqlStorage:
             elif col == 'id':
                 continue
             else:
-                excluded.append(f'"{col}" = EXCLUDED."{col}"')
+                excluded.append(f'"{col}" = COALESCE(EXCLUDED."{col}", "{tablename}"."{col}")')
         return ', '.join(excluded)
 
     def upsert(self, cursor, tablename, obj, query_id, schema):
@@ -943,12 +944,15 @@ class SqlStorage:
             by = [by]
         columns = self.columns(viewname)
         group_colnames = []
+        joined = set()
         qry = Query(viewname)
         for col in by:
             if col not in columns:
                 joins, table, colname = self.path_joins(viewname, None, col)
                 group_colnames.append(Column(colname, table, col))
-                qry.extend(joins)
+                if table not in joined:
+                    joined.add(table)
+                    qry.extend(joins)
             else:
                 group_colnames.append(Column(col, viewname))
         if not aggs:
@@ -967,8 +971,10 @@ class SqlStorage:
                 func, attr, alias = agg
                 if attr not in columns and attr != '*':
                     joins, table, colname = self.path_joins(viewname, None, attr)
-                    qry.extend(joins)
                     tmp.append((func, Column(colname, table), alias))
+                    if table not in joined:
+                        joined.add(table)
+                        qry.extend(joins)
                 else:
                     tmp.append(agg)
             aggs = tmp
