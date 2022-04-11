@@ -829,7 +829,7 @@ class SqlStorage:
         qry.append(Aggregation([('SUM', 'number_observed', 'count')]))
         res = self._query_one(qry)
         if res:
-            count = int(res['count'])
+            count = res['count'] if res['count'] else 0
         else:
             count = self.count(viewname)
         return count
@@ -928,7 +928,7 @@ class SqlStorage:
             c = self.count(viewname)
             res = {'first_observed': None, 'last_observed': None, 'number_observed': c}
         elif res['number_observed'] is not None:
-            res['number_observed'] = int(res['number_observed'])  # Convert form Decimal
+            res['number_observed'] = int(res['number_observed'])  # Convert from Decimal
         else:
             res['number_observed'] = 0
         return res

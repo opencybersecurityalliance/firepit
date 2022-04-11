@@ -37,4 +37,12 @@ def test_number_observed_src_dst(tmpdir, fake_bundle_file):
     assert number_observed == 100
     number_observed = store.number_observed('tens', 'dst_ref.value', '10.0.0.73')
     assert number_observed == 14
-    
+
+
+def test_number_observed_ipv4_negative(tmpdir, fake_bundle_file):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', fake_bundle_file)
+    number_observed = store.number_observed('ipv4-addr', 'value')
+    assert number_observed == 200
+    number_observed = store.number_observed('ipv4-addr', 'value', '9.9.9.9')
+    assert number_observed == 0
