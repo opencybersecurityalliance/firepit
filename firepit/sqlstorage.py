@@ -833,7 +833,7 @@ class SqlStorage:
         qry.append(Aggregation([('SUM', 'number_observed', 'count')]))
         res = self._query_one(qry)
         if res:
-            count = res['count'] if res['count'] else 0
+            count = int(res['count']) if res['count'] else 0
         else:
             count = self.count(viewname)
         return count
