@@ -2,7 +2,7 @@ import logging
 import os
 from collections import OrderedDict, defaultdict
 
-import orjson
+import ujson
 
 from firepit.exceptions import DuplicateTable
 
@@ -46,11 +46,9 @@ class JsonWriter:
         if replace:
             raise Exception('"replace" not supported when writing JSON')
         fp = self._get_fp(obj_type)
-        #buf = '\n'.join([str(orjson.dumps(rec), 'utf-8') for rec in records]) + '\n'
-        #fp.write('{}\n'.format(buf))
         for record in records:
             obj = OrderedDict(zip(schema.keys(), record))
-            buf = str(orjson.dumps(obj), 'utf-8')
+            buf = ujson.dumps(obj)
             fp.write(buf)
 
     def types(self):
@@ -96,7 +94,7 @@ class SqlWriter:
         valnames = [f'"{col}" = EXCLUDED."{col}"' for col in colnames if col != 'id']
         valnames = ', '.join(valnames)
         stmt += f'UPDATE SET {valnames};'
-        tmp = [str(orjson.dumps(value), 'utf-8')
+        tmp = [ujson.dumps(value)
                if isinstance(value, list) else value for value in obj]
         values = tuple(tmp)
         logger.debug('_replace: "%s" values %s', stmt, values)

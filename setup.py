@@ -14,7 +14,6 @@ requirements = [
     'anytree',
     'ijson',
     'lark-parser',
-    'orjson>=3.3.1',
     'psycopg2-binary',
     'tabulate',
     'typer',

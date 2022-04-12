@@ -2,7 +2,7 @@ import logging
 import re
 import uuid
 
-import orjson
+import ujson
 
 from firepit import raft
 from firepit.deref import auto_deref
@@ -332,7 +332,7 @@ class SqlStorage:
             else:
                 action = 'NOTHING'
             stmt += f' ON CONFLICT (id) DO {action}'
-        values = tuple([str(orjson.dumps(value), 'utf-8')
+        values = tuple([ujson.dumps(value)
                         if isinstance(value, list) else value for value in obj])
         logger.debug('_upsert: "%s", %s', stmt, values)
         cursor.execute(stmt, values)

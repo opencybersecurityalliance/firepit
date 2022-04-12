@@ -3,7 +3,6 @@ import os
 import re
 from functools import lru_cache
 
-import orjson
 import psycopg2
 import psycopg2.extras
 import ujson
@@ -429,7 +428,7 @@ class PgStorage(SqlStorage):
             if query_id and idx is not None:
                 query_values.append(obj[idx])
                 query_values.append(query_id)
-            values.extend([str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value for value in obj])
+            values.extend([ujson.dumps(value) if isinstance(value, list) else value for value in obj])
         cursor.execute(stmt, values)
 
         if query_id and 'id' in colnames:

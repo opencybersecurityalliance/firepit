@@ -8,8 +8,8 @@ from collections import OrderedDict
 from collections import defaultdict
 
 import ijson
-import orjson
 import requests
+import ujson
 
 from firepit import stix21
 
@@ -64,7 +64,7 @@ def get_objects(source, types=None):
         yield from _get_objects(source, types)
     else:
         with open(source, 'r') as fp:
-            bundle = orjson.loads(fp.read())
+            bundle = ujson.loads(fp.read())
         yield from _yield_objects(bundle, types)
 
 
