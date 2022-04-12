@@ -883,14 +883,11 @@ class SqlStorage:
             proj.append(Column(column, table, path))
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
-        qry.append(Order([timestamp]))
+        ts_col = Column(timestamp, 'observed-data')
+        qry.append(Order([ts_col]))
         if not proj:
             proj = [Column('*', viewname)]
-        qry.append(
-            Projection(
-                [Column(timestamp, 'observed-data')] + proj
-            )
-        )
+        qry.append(Projection([ts_col] + proj))
         if limit:
             qry.append(Limit(limit))
 

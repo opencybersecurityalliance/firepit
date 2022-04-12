@@ -1,6 +1,7 @@
 import pytest
 
 from firepit.query import Aggregation
+from firepit.query import Column
 from firepit.query import Count
 from firepit.query import CountUnique
 from firepit.query import Filter
@@ -407,6 +408,20 @@ def test_implicit_table():
     query.append(Order(['foo']))
     qtext, values = query.render('%s')
     assert qtext == 'SELECT "foo", "bar", "baz" FROM "my_table" ORDER BY "foo" ASC'
+
+
+def test_explicit_table_in_order():
+    query = Query('my_table')
+    query.append(Order([Column('foo', 'my_table')]))
+    qtext, values = query.render('%s')
+    assert qtext == 'SELECT * FROM "my_table" ORDER BY "my_table"."foo" ASC'
+
+
+def test_explicit_table_in_order_desc():
+    query = Query('my_table')
+    query.append(Order([(Column('foo', 'my_table'), Order.DESC)]))
+    qtext, values = query.render('%s')
+    assert qtext == 'SELECT * FROM "my_table" ORDER BY "my_table"."foo" DESC'
 
 
 def test_query_init_list():

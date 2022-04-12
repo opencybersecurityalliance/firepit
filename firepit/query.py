@@ -200,17 +200,16 @@ class Order:
     def __init__(self, cols):
         self.cols = []
         for col in cols:
-            if isinstance(col, tuple):
+            if not isinstance(col, tuple):
+                col = (col, Order.ASC)
+            if isinstance(col[0], str):
                 validate_path(col[0])
-                self.cols.append(col)
-            elif isinstance(col, str):
-                validate_path(col)
-                self.cols.append((col, Order.ASC))
+            self.cols.append(col)
 
     def render(self, placeholder):
         col_list = []
         for col in self.cols:
-            col_list.append(f'"{col[0]}" {col[1]}')
+            col_list.append(f'{_quote(col[0])} {col[1]}')
         return ', '.join(col_list)
 
 
