@@ -242,7 +242,6 @@ class SqlStorage:
 
     def path_joins(self, viewname, sco_type, column):
         """Determine if `column` has implicit Joins and return them if so"""
-        logger.warning("path_joins: %s, %s, %s", viewname, sco_type, column)
         if not sco_type:
             sco_type = self.table_type(viewname)
         aliases = {sco_type: viewname}
@@ -885,12 +884,13 @@ class SqlStorage:
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
         qry.append(Order([timestamp]))
-        if proj:
-            qry.append(
-                Projection(
-                    [Column(timestamp, 'observed-data')] + proj
-                )
+        if not proj:
+            proj = [Column('*', viewname)]
+        qry.append(
+            Projection(
+                [Column(timestamp, 'observed-data')] + proj
             )
+        )
         if limit:
             qry.append(Limit(limit))
 
