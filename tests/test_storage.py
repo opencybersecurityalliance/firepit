@@ -9,10 +9,13 @@ from decimal import Decimal
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import UnknownViewname
 from firepit.query import Aggregation
+from firepit.query import Column
 from firepit.query import Group
+from firepit.query import Join
 from firepit.query import Limit
 from firepit.query import Query
 from firepit.query import Order
+from firepit.query import Projection
 from firepit.query import Table
 
 from .helpers import tmp_storage
@@ -68,10 +71,9 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
 
     urls1 = store.lookup('urls', limit=5)
     assert len(urls1) == 5
-    urls2 = store.lookup('urls', limit=5, offset=2, cols="value,number_observed")
+    urls2 = store.lookup('urls', limit=5, offset=2, cols="value")
     assert len(urls2) == 5
-    assert len(urls2[1].keys()) == 2
-    assert 'number_observed' in urls2[1].keys()
+    assert len(urls2[1].keys()) == 1
 
     store.assign('sorted', 'urls', op='sort', by='value')
     urls = store.values('url:value', 'sorted')
@@ -91,22 +93,17 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     store.extract('a_ips', 'ipv4-addr', 'q1', "[ipv4-addr:value LIKE '10.%']")
     a_ips = store.values('ipv4-addr:value', 'a_ips')
     print(a_ips)
-    assert len(a_ips) == 100
-    assert '10.0.0.141' in a_ips
-
-    store.extract('a_ips', 'ipv4-addr', 'q1', "[ipv4-addr:value LIKE '10.%']")
-    a_ips = store.values('ipv4-addr:value', 'a_ips')
-    print(a_ips)
-    assert len(a_ips) == 100
+    print('nunique =', len(set(a_ips)))
+    assert len(a_ips) == 10  # There are only 10 unique IPs in the bundle
     assert '10.0.0.141' in a_ips
 
     store.extract('users', 'user-account', 'q1', "[ipv4-addr:value LIKE '10.%']")
     users = store.values('user-account:account_login', 'users')
     print(users)
-    assert len(users) == 100
+    assert len(users) == 14  # There are only 14 unique usernames in the bundle
     counter = Counter(users)
-    assert counter['henry'] == 2
-    assert counter['isabel'] == 12
+    assert counter['henry'] == 1
+    assert counter['isabel'] == 1
     by = 'user-account:account_login'
     store.assign('grouped_users', 'users', op='group', by=by)
     cols = store.columns('grouped_users')
@@ -116,10 +113,10 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     print(grouped_users)
     henry = next((item for item in grouped_users if item['account_login'] == 'henry'), None)
     assert henry
-    assert henry['number_observed'] == 2
+    #assert henry['number_observed'] == 2
     isabel = next((item for item in grouped_users if item['account_login'] == 'isabel'), None)
     assert isabel
-    assert isabel['number_observed'] == 12
+    #assert isabel['number_observed'] == 12
 
     with open(fake_csv_file, newline='') as fp:
         reader = csv.DictReader(fp)
@@ -212,18 +209,32 @@ def test_ops(fake_bundle_file, tmpdir, sco_type, prop, op, value, expected, unex
         assert expected not in data
 
 
-def test_grouping(fake_bundle_file, fake_csv_file, tmpdir):
+def test_grouping(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])
 
     store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
-    store.assign('conns', 'conns', op='group', by='src_ref.value')
+    store.assign('conns', 'conns', op='group', by='src_ref.value')  # Deprecated
     srcs = store.values('src_ref.value', 'conns')
     assert srcs
 
     groups = store.lookup('conns')
     assert groups
     assert 'unique_dst_port' in groups[0].keys()
+
+
+def test_grouping_dst_port(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
+    store.assign('conns', 'conns', op='group', by='dst_port')  # Deprecated
+    srcs = store.values('dst_port', 'conns')
+    assert srcs
+
+    groups = store.lookup('conns')
+    assert groups
+    assert 'dst_port' in groups[0].keys()
 
 
 def test_extract(fake_bundle_file, tmpdir):
@@ -248,7 +259,6 @@ def test_schema(fake_bundle_file, tmpdir):
     print(schema)
     columns = [i['name'] for i in schema]
     assert 'id' in columns
-    assert 'type' in columns
     assert 'value' in columns
 
 
@@ -351,7 +361,37 @@ def test_reassign_after_grouping(fake_bundle_file, tmpdir):
     rows = store.lookup('grouped_conns')
     print(ujson.dumps(rows, indent=4))
     assert len(rows) == len(grouped_conns)
-    
+
+
+# With the normalized DB, can we still enrich IPs in network-traffic?
+def test_reassign_enriched_refs(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    # Grab some network traffic
+    store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port = 22]")
+    conns = store.lookup('conns')
+
+    # Grab the dest addrs from those same connections
+    store.extract('dests', 'ipv4-addr', 'q1', "[network-traffic:dst_port = 22]")
+
+    # Simulate running some analytics to enrich these
+    for conn in conns:
+        conn['dst_ref.x_enrich'] = 1
+
+    # Now reload into the same var
+    store.reassign('conns', conns)
+    rows = store.lookup('conns')
+    assert len(rows) == len(conns)
+
+    # Check dests for enrichment
+    dests = store.lookup('dests')
+    print(ujson.dumps(dests, indent=4))
+    for dest in dests:
+        assert 'x_enrich' in dest
+        if dest['value'].startswith('10.'):
+            assert dest['x_enrich'] == 1
+
 
 def test_appdata(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
@@ -530,7 +570,8 @@ def test_port_zero(fake_bundle_file_2, tmpdir):
     store.assign('sconns', 'conns', op='sort', by='src_port')
     conns = store.lookup('sconns')
     assert conns[0]['src_port'] == 0
-    assert conns[0]['id'] == 'network-traffic--2171d844-d635-4f03-91cc-0a36f1caf3b6_2'
+    assert conns[0]['id'] == 'network-traffic--637791d8-c981-5a1e-9714-f0c4cfcb736b'
+    assert conns[0]['start'] == '2020-06-30T19:25:09.447726Z'
 
 
 def test_duplicate_identity(fake_bundle_list, tmpdir):
@@ -556,8 +597,7 @@ def test_three_ips(one_event_bundle, tmpdir):
     """A single Observation SDO can contain any arbitrary number and type
     of SCOs.  In the case that one type appears multiple times,
     firepit will attempt to mark one as the "primary", or most
-    significant, instance by setting an "x_root" attribute to 1 (note
-    that this name may change in the future).
+    significant, instance by setting an "x_firepit_rank" attribute to 1.
 
     A common case is `ipv4-addr`: if you have a `network-traffic`
     object, then you usally have 2 `ipv4-addr` (or `ipv6-addr`)
@@ -572,7 +612,9 @@ def test_three_ips(one_event_bundle, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [one_event_bundle])
 
-    results = store._query('SELECT value FROM "ipv4-addr" WHERE "x_root" IS NOT NULL')
+    results = store._query(('SELECT value FROM "ipv4-addr" i'
+                            ' JOIN __contains c on i.id = c.target_ref'
+                            ' WHERE c."x_firepit_rank" IS NOT NULL'))
     rows = results.fetchall()
     assert len(rows) == 1  # There can be only 1!!!
     assert rows[0]['value'] == '10.95.79.130'
@@ -598,7 +640,9 @@ def test_grouping_multi_auto(fake_bundle_file, tmpdir):
     store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port < 1024]")
     query = Query()
     query.append(Table('conns'))
-    query.append(Group(['src_ref.value']))
+    #query.append(Group(['src_ref.value']))
+    query.append(Join('ipv4-addr', 'src_ref', '=', 'id'))
+    query.append(Group([Column('value', alias='src_ref.value')]))
     store.assign_query('conns', query)
     srcs = store.values('src_ref.value', 'conns')
     assert srcs
@@ -616,14 +660,19 @@ def test_grouping_multi_agg_1(fake_bundle_file, tmpdir):
     store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port > 0]")
     query = Query([
         Table('conns'),
-        Group(['src_ref.value']),
-        Aggregation([('SUM', 'number_observed', 'total')]),
+        #Group(['src_ref.value']),
+        Join('ipv4-addr', 'src_ref', '=', 'id'),
+        Group([Column('value', alias='src_ref.value')]),
+        #Aggregation([('SUM', 'number_observed', 'total')]),
+        #Aggregation([('SUM', Column('number_observed', table='conns'), 'total')]),
+        Aggregation([('COUNT', 'src_port', 'total')]),
         Order([('total', Order.DESC)]),
         Limit(10)
     ])
     store.assign_query('grp_conns', query)
 
     groups = store.lookup('grp_conns')
+    print(groups)
     assert groups
     assert 'total' in groups[0].keys()
     assert len(groups) == 10
@@ -652,8 +701,58 @@ def test_assign_query_1(fake_bundle_file, tmpdir):
     store.extract('conns', 'network-traffic', 'q1', "[network-traffic:dst_port > 0]")
     query = Query([
         Table('conns'),
+        Join('ipv4-addr', 'src_ref', '=', 'id', alias='src'),
+        Join('ipv4-addr', 'dst_ref', '=', 'id', alias='dst', lhs='conns'),
+        Projection([
+            Column('value', table='src', alias='src_ref.value'),
+            'src_port',
+            Column('value', table='dst', alias='dst_ref.value'),
+            'dst_port',
+            'protocols',
+        ]),
         Order([('src_ref.value', Order.DESC)]),
     ])
     store.assign_query('conns', query)
     srcs = store.values('src_ref.value', 'conns')
     assert srcs[0] > srcs[-1]
+
+
+def test_number_observed(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('users', 'user-account', 'q1', "[ipv4-addr:value LIKE '10.%']")
+    assert isinstance(store.number_observed('users', 'account_login'), int)
+    assert store.number_observed('users', 'account_login') == 100
+    assert store.number_observed('users', 'account_login', 'henry') == 2
+    assert store.number_observed('users', 'account_login', 'isabel') == 12
+
+
+def test_timestamped(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('users', 'user-account', 'q1', "[ipv4-addr:value LIKE '10.%']")
+    accounts = store.timestamped('users')
+    assert len(accounts) == 100
+    assert 'first_observed' in accounts[0].keys()
+    assert 'account_login' in accounts[0].keys()
+    assert 'user_id' in accounts[0].keys()
+    assert 'id' in accounts[0].keys()
+    logins = store.timestamped('users', 'account_login')
+    assert len(logins) == 100
+    assert set(logins[0].keys()) == {'first_observed', 'account_login'}
+    henry = store.timestamped('users', 'account_login', 'henry')
+    assert len(henry) == len([i for i in logins if i['account_login'] == 'henry'])
+    isabel = store.timestamped('users', 'account_login', 'isabel')
+    assert len(isabel) == len([i for i in logins if i['account_login'] == 'isabel'])
+
+def test_value_counts(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+    data = store.value_counts('user-account', 'account_login')
+    print(data)
+    henry = [i for i in data if i['account_login'] == 'henry'][0]
+    assert henry['count'] == 2
+    isabel = [i for i in data if i['account_login'] == 'isabel'][0]
+    assert isabel['count'] == 12

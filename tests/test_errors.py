@@ -137,7 +137,7 @@ def test_lookup_bad_offset(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])
     store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         store.lookup('urls', offset="1; select * from urls; --")
 
 
@@ -163,7 +163,7 @@ def test_sort_bad_limit(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])
     store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         store.assign('sorted', 'urls', op='sort', by='value', limit='1; SELECT 1; --')
 
 
@@ -185,6 +185,22 @@ def test_assign_query_sqli(fake_bundle_file, tmpdir):
         Table('url'),
         Filter([Predicate('value', '=', '1; select * from url; --')])
     ])
+    # This no longer raises since the injection value is a valid string
+    # The injection should not return any data, however.
+    store.assign_query('urls', query)
+    data = store.lookup('urls')
+    assert len(data) == 0
+
+
+def test_assign_query_sqli_quote(fake_bundle_file, tmpdir):
+    # Same as previous test but includes a closing quote in the injection value
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+    query = Query([
+        Table('url'),
+        Filter([Predicate('value', '=', '1\'; select * from url; --')])
+    ])
+    # Arguably, this shouldn't raise either: maybe we should escape the embedded quote?
     with pytest.raises(UnexpectedError):
         store.assign_query('urls', query)
 

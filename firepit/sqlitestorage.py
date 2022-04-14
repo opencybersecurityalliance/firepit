@@ -50,10 +50,16 @@ class SQLiteStorage(SqlStorage):
         # Create function for SQL MATCH
         self.connection.create_function("match", 2, _match)
 
-        # Do DB initization
-        cursor = self.connection.cursor()
-        cursor.execute('BEGIN;')
-        self._initdb(cursor)
+        cursor = self.connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='__queries'")
+        rows = cursor.fetchall()
+        if len(rows) == 1:
+            # Attaching to existing DB
+            self._checkdb()
+        else:
+            # Do DB initization
+            cursor.execute('BEGIN;')
+            self._initdb(cursor)
         cursor.close()
 
     def _get_writer(self, **kwargs):
@@ -71,7 +77,7 @@ class SQLiteStorage(SqlStorage):
             else:
                 cursor.execute(query, values)
         except sqlite3.OperationalError as e:
-            logger.debug('%s', e)  #, exc_info=e)
+            logger.error('%s: %s', query, e)  #, exc_info=e)
             if e.args[0].startswith("no such column"):
                 m = e.args[0].replace("no such column", "invalid attribute")
                 raise InvalidAttr(m) from e
@@ -113,7 +119,8 @@ class SQLiteStorage(SqlStorage):
                 self._execute(f'ALTER TABLE "{viewname}" RENAME TO "_{viewname}"', cursor)
                 slct = slct.replace(viewname, f'_{viewname}')
             # Swap out the viewname for its definition
-            select = re.sub(f'"{viewname}"', f'({slct}) AS tmp', select)
+            select = re.sub(f'FROM "{viewname}"', f'FROM ({slct}) AS tmp', select, count=1)
+            select = re.sub(f'"{viewname}"', 'tmp', select)
         if self._is_sql_view(viewname, cursor):
             is_new = False
             self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
@@ -134,8 +141,7 @@ class SQLiteStorage(SqlStorage):
             logger.debug('_create_table: %s', e)  #, exc_info=e)
             if e.args[0].startswith(f'table "{tablename}" already exists'):
                 raise DuplicateTable(tablename) from e
-        if 'x_contained_by_ref' in columns:
-            self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+        self._create_index(tablename, cursor)
         self.connection.commit()
         cursor.close()
 
@@ -179,11 +185,13 @@ class SQLiteStorage(SqlStorage):
                 if not i['name'].startswith('__') and
                 not i['name'].startswith('sqlite')]
 
-    def types(self):
+    def types(self, private=False):
         stmt = ("SELECT name FROM sqlite_master WHERE type='table'"
                 " EXCEPT SELECT name FROM __symtable")
         cursor = self.connection.execute(stmt)
         rows = cursor.fetchall()
+        if private:
+            return [i['name'] for i in rows]
         return [i['name'] for i in rows
                 if not i['name'].startswith('__') and
                 not i['name'].startswith('sqlite')]

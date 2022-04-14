@@ -3,12 +3,26 @@
 from firepit.validate import validate_name
 from firepit.validate import validate_path
 
-import re
-
 COMP_OPS = ['=', '<>', '!=', '<', '>', '<=', '>=', 'LIKE', 'IN', 'IS', 'IS NOT']
 PRED_OPS = ['AND', 'OR']
 JOIN_TYPES = ['INNER', 'OUTER', 'LEFT OUTER', 'CROSS']
 AGG_FUNCS = ['COUNT', 'SUM', 'MIN', 'MAX', 'AVG', 'NUNIQUE']
+
+
+def _validate_column_name(name):
+    if name != '*':
+        validate_path(name)  # This is for STIX object paths, not column names...
+
+
+def _validate_column(col):
+    if isinstance(col, str):
+        _validate_column_name(col)
+    elif isinstance(col, Column):
+        _validate_column_name(col.name)
+        if col.table:
+            validate_name(col.table)
+        if col.alias:
+            validate_path(col.alias)
 
 
 class InvalidComparisonOperator(Exception):
@@ -16,6 +30,10 @@ class InvalidComparisonOperator(Exception):
 
 
 class InvalidPredicateOperator(Exception):
+    pass
+
+
+class InvalidPredicateOperand(Exception):
     pass
 
 
@@ -31,48 +49,122 @@ class InvalidQuery(Exception):
     pass
 
 
+def _quote(obj):
+    """Double-quote an SQL identifier if necessary"""
+    if isinstance(obj, str):
+        if obj == '*':
+            return obj
+        return f'"{obj}"'
+    return str(obj)
+
+
+class Column:
+    """SQL Column name"""
+
+    def __init__(self, name, table=None, alias=None):
+        _validate_column_name(name)
+        if table:
+            validate_name(table)
+        if alias:
+            validate_path(alias)
+        self.name = name
+        self.table = table
+        self.alias = alias
+
+    def __str__(self):
+        if self.table:
+            result = f'"{self.table}".{_quote(self.name)}'
+        else:
+            result = f'{_quote(self.name)}'
+        if self.alias:
+            result = f'{result} AS "{self.alias}"'
+        return result
+
+    def endswith(self, s):
+        return str(self).endswith(s)
+
+
+class CoalescedColumn:
+    """First non-null column from a list - used after a JOIN"""
+
+    def __init__(self, names, alias):
+        for name in names:
+            _validate_column_name(name)
+        validate_path(alias)
+        self.names = names
+        self.alias = alias
+
+    def __str__(self):
+        result = ', '.join(self.names)
+        result = f'COALESCE({result}) AS "{self.alias}"'
+        return result
+
+
 class Predicate:
-    """Simple row value predicate"""
+    """Row value predicate"""
 
     def __init__(self, lhs, op, rhs):
-        if op not in COMP_OPS:
-            raise InvalidComparisonOperator(op)
-        if rhs is None:
-            rhs = 'NULL'
-        if lhs.endswith('[*]'):  # STIX list property
-            lhs = lhs[:-3]
-            if rhs.lower() != 'null':
-                rhs = f"%{rhs}%"  # wrap with SQL wildcards since list is encoded as string
-                if op == '=':
-                    op = 'LIKE'
-                elif op == '!=':
-                    op = 'NOT LIKE'
-        validate_path(lhs)
+        if isinstance(lhs, Predicate):
+            if op not in PRED_OPS:
+                raise InvalidPredicateOperator(op)
+            if not isinstance(rhs, Predicate):
+                raise InvalidPredicateOperand(str(rhs))
+            self.values = lhs.values + rhs.values
+        else:
+            if op not in COMP_OPS:
+                raise InvalidComparisonOperator(op)
+            if rhs is None:
+                rhs = 'NULL'
+            if lhs.endswith('[*]'):  # STIX list property
+                lhs = lhs[:-3]
+                if rhs.lower() != 'null':
+                    rhs = f"%{rhs}%"  # wrap with SQL wildcards since list is encoded as string
+                    if op == '=':
+                        op = 'LIKE'
+                    elif op == '!=':
+                        op = 'NOT LIKE'
+            if isinstance(lhs, str):
+                validate_path(lhs)
+            if rhs in ['null', 'NULL']:
+                self.values = ()
+                if op not in ['=', '!=', '<>', 'IS', 'IS NOT']:
+                    raise InvalidComparisonOperator(op)  # Maybe need different exception here?
+            elif isinstance(rhs, (list, tuple)):
+                self.values = tuple(rhs)
+            elif isinstance(rhs, Column):
+                self.values = tuple()
+            elif isinstance(rhs, Query):
+                _, self.values = rhs.render('IGNORED')
+            else:
+                self.values = (rhs, )
         self.lhs = lhs
         self.op = op
         self.rhs = rhs
-        if self.rhs in ['null', 'NULL']:
-            self.values = ()
-            if op not in ['=', '!=', '<>', 'IS', 'IS NOT']:
-                raise InvalidComparisonOperator(op)  # Maybe need different exception here?
-        elif isinstance(self.rhs, (list, tuple)):
-            self.values = tuple(self.rhs)
-        else:
-            self.values = (self.rhs, )
 
     def render(self, placeholder):
+        if isinstance(self.lhs, Predicate):
+            text = self.lhs.render(placeholder)
+            text += f' {self.op} '
+            text += self.rhs.render(placeholder)
+            return f'({text})'  # Do we really need parens?
+
         if self.rhs in ['null', 'NULL']:
             if self.op in ['!=', '<>']:
-                text = f'("{self.lhs}" IS NOT NULL)'
+                text = f'({_quote(self.lhs)} IS NOT NULL)'
             elif self.op == '=':
-                text = f'("{self.lhs}" IS NULL)'
+                text = f'({_quote(self.lhs)} IS NULL)'
             else:
                 raise InvalidComparisonOperator(self.op)
+        elif isinstance(self.rhs, Column):
+            text = f'({_quote(self.lhs)} {self.op} {_quote(self.rhs)})'
         elif self.op == 'IN':
-            phs = ', '.join([placeholder] * len(self.rhs))
-            text = f'("{self.lhs}" {self.op} ({phs}))'
+            if isinstance(self.rhs, Query):  # there's probably a better way to detect this
+                rhs, _ = self.rhs.render(placeholder)
+            else:
+                rhs = ', '.join([placeholder] * len(self.rhs))
+            text = f'({_quote(self.lhs)} {self.op} ({rhs}))'
         else:
-            text = f'("{self.lhs}" {self.op} {placeholder})'
+            text = f'({_quote(self.lhs)} {self.op} {placeholder})'
         return text
 
 
@@ -108,30 +200,28 @@ class Order:
     def __init__(self, cols):
         self.cols = []
         for col in cols:
-            if isinstance(col, tuple):
+            if not isinstance(col, tuple):
+                col = (col, Order.ASC)
+            if isinstance(col[0], str):
                 validate_path(col[0])
-                self.cols.append(col)
-            elif isinstance(col, str):
-                validate_path(col)
-                self.cols.append((col, Order.ASC))
+            self.cols.append(col)
 
     def render(self, placeholder):
         col_list = []
         for col in self.cols:
-            col_list.append(f'"{col[0]}" {col[1]}')
+            col_list.append(f'{_quote(col[0])} {col[1]}')
         return ', '.join(col_list)
 
 
 class Projection:
     """SQL SELECT (really projection - pick column subset) clause"""
-
     def __init__(self, cols):
         for col in cols:
-            validate_path(col)
+            _validate_column(col)
         self.cols = cols
 
     def render(self, placeholder):
-        return ', '.join([f'"{col}"' for col in self.cols])
+        return ', '.join([_quote(col) for col in self.cols])
 
 
 class Table:
@@ -150,11 +240,20 @@ class Group:
 
     def __init__(self, cols):
         for col in cols:
-            validate_path(col)
+            _validate_column(col)
         self.cols = cols
 
     def render(self, placeholder):
-        return ', '.join([f'"{col}"' for col in self.cols])
+        cols = []
+        for col in self.cols:
+            if isinstance(col, Column):  # Again, nasty hacks
+                if col.table:
+                    cols.append(f'{col.table}"."{col.name}')
+                else:
+                    cols.append(col.name)
+            else:
+                cols.append(col)
+        return ', '.join([_quote(col) for col in cols])
 
 
 class Aggregation:
@@ -172,14 +271,14 @@ class Aggregation:
                 if func.upper() not in AGG_FUNCS:
                     raise InvalidAggregateFunction(func)
                 if col is not None and col != '*':
-                    validate_path(col)
+                    _validate_column(col)
                 self.aggs.append((func, col, alias))
             else:
                 raise TypeError('expected aggregation tuple but received ' + str(type(agg)))
         self.group_cols = []  # Filled in by Query
 
     def render(self, placeholder):
-        exprs = [f'"{col}"' for col in self.group_cols]
+        exprs = [_quote(col) for col in self.group_cols]
         for agg in self.aggs:
             mod = ''
             func, col, alias = agg
@@ -191,7 +290,7 @@ class Aggregation:
             if col == '*':
                 expr = f'{func}({mod}{col})'  # No quotes for *
             else:
-                expr = f'{func}({mod}"{col}")'
+                expr = f'{func}({mod}{_quote(col)})'
             if not alias:
                 alias = func.lower()
             expr += f' AS "{alias}"'
@@ -203,20 +302,20 @@ class Offset:
     """SQL row offset"""
 
     def __init__(self, num):
-        self.text = f'{num}'
+        self.num = int(num)
 
     def render(self, placeholder):
-        return self.text
+        return str(self.num)
 
 
 class Limit:
     """SQL row count"""
 
     def __init__(self, num):
-        self.text = f'{num}'
+        self.num = int(num)
 
     def render(self, placeholder):
-        return self.text
+        return str(self.num)
 
 
 class Count:
@@ -244,7 +343,7 @@ class CountUnique:
 
     def __init__(self, cols=None):
         for col in cols or []:
-            validate_path(col)
+            _validate_column(col)
         self.cols = cols
 
     def render(self, placeholder):
@@ -257,125 +356,222 @@ class CountUnique:
 class Join:
     """Join 2 tables"""
 
-    def __init__(self, name, left_col, op, right_col, how='INNER'):
+    def __init__(self, name,
+                 left_col=None, op=None, right_col=None,
+                 preds=None,
+                 how='INNER', alias=None, lhs=None):
+        """
+        Use *either* `left_col`, `op`, and `right_col` or `preds`
+        """
         validate_name(name)
-        validate_path(left_col)
-        validate_path(right_col)
+        if all((left_col, op, right_col)):
+            _validate_column(left_col)
+            _validate_column(right_col)
+        if alias:
+            validate_name(alias)
+        if lhs:
+            validate_name(name)
         if how.upper() not in JOIN_TYPES:
             raise InvalidJoinOperator(how)
-        self.prev_name = None
+        self.prev_name = lhs  # If none, filled in by Query
         self.name = name
         self.left_col = left_col
         self.op = op
         self.right_col = right_col
         self.how = how
+        self.alias = alias
+        self.values = tuple()
+        self.preds = preds
+        if preds:
+            for pred in self.preds:
+                self.values += pred.values
+
+    def __repr__(self):
+        return f'Join({self.name}, {self.left_col}, {self.op}, {self.right_col}, {self.how}, {self.alias}, {self.prev_name})'
+
+    def __eq__(self, rhs):
+        return (
+            self.prev_name == rhs.prev_name and
+            self.name == rhs.name and
+            self.left_col == rhs.left_col and
+            self.op == rhs.op and
+            self.right_col == rhs.right_col and
+            self.how == rhs.how and
+            self.alias == rhs.alias)
 
     def render(self, placeholder):
         # Assume there's a FROM before this?
-        return (f'{self.how.upper()} JOIN "{self.name}"'
-                f' ON "{self.prev_name}"."{self.left_col}"'
-                f' {self.op} "{self.name}"."{self.right_col}"')
+        target = f'"{self.name}"'
+        table = target
+        if self.alias:
+            target += f' AS "{self.alias}"'
+            table = f'"{self.alias}"'
+        if self.left_col:
+            cond = (f'"{self.prev_name}"."{self.left_col}"'
+                    f' {self.op} {table}."{self.right_col}"')
+        else:
+            pred_list = []
+            for pred in self.preds:
+                tmp = pred.render(placeholder)
+                pred_list.append(tmp)
+            cond = ' AND '.join(pred_list)
+        return f'{self.how.upper()} JOIN {target} ON {cond}'
 
 
 class Query:
-    def __init__(self, arg=None):
-        self.stages = []
-        if isinstance(arg, str):
-            self.append(Table(arg))
-        elif isinstance(arg, list):
-            for stage in arg:
-                self.append(stage)
+    """
+    SQL Query statement
 
-    def last_stage(self):
-        return self.stages[-1] if self.stages else None
+    SQL order of evaluations:
+    FROM, including JOINs
+    WHERE
+    GROUP BY
+    HAVING
+    WINDOW functions
+    SELECT (projection)
+    DISTINCT
+    UNION
+    ORDER BY
+    LIMIT and OFFSET
+    """
+    def __init__(self, arg=None):
+        self.table = None
+        self.joins = []
+        self.where = []
+        self.groupby = None
+        self.aggs = None
+        self.having = []
+        #Not supported: windows
+        self.proj = None  # Make a list of Projections?
+        self.distinct = False
+        self.count = False  # FIXME: isn't this an aggregation?
+        # TODO: self.union = []
+        self.order = None
+        self.limit = None
+        self.offset = 0
+        if isinstance(arg, str):
+            self.table = Table(arg)
+        elif isinstance(arg, Table):
+            self.table = arg
+        elif isinstance(arg, list):
+            self.extend(arg)
 
     def append(self, stage):
-        if isinstance(stage, Aggregation):
-            # If there's already a Projection, that's an error
-            for prev in self.stages:
-                if isinstance(prev, Projection):
-                    raise InvalidQuery('cannot have Aggregation after Projection')
-            if self.stages:
-                last = self.last_stage()
-                if isinstance(last, Group):
-                    stage.group_cols = last.cols  # Copy grouped columns
+        if isinstance(stage, Table):
+            self.table = stage
         elif isinstance(stage, Join):
-            # Need to look back and grab previous table name
-            last = self.last_stage()
-            if isinstance(last, (Table, Join)):
-                stage.prev_name = last.name
-            else:
+            if not self.table:
                 raise InvalidQuery('Join must follow Table or Join')
+            self.joins.append(stage)
+        elif isinstance(stage, Filter):
+            if self.groupby:
+                self.having.append(stage)
+            else:
+                self.where.append(stage)
+        elif isinstance(stage, Group):
+            self.groupby = stage
+        elif isinstance(stage, Aggregation):
+            # If there's already a Projection, that's an error
+            if self.proj:
+                raise InvalidQuery('cannot have Aggregation after Projection')
+            self.aggs = stage
+        elif isinstance(stage, Projection):
+            self.proj = stage
         elif isinstance(stage, Count):
-            # See if we can combine with previous stages
-            last = self.last_stage()
-            if isinstance(last, Unique):
-                self.stages.pop(-1)
-                cols = None
-                if self.stages:
-                    last = self.last_stage()
-                    if isinstance(last, Projection):
-                        proj = self.stages.pop(-1)
-                        cols = proj.cols
-                stage = CountUnique(cols)
+            self.count = stage
+        elif isinstance(stage, Unique):
+            self.distinct = True
         elif isinstance(stage, CountUnique):
-            # See if we can combine with previous stages
-            last = self.last_stage()
-            if isinstance(last, Projection):
-                self.stages.pop(-1)
-                stage.cols = last.cols
-        self.stages.append(stage)
+            self.count = Count()
+            self.distinct = True
+        elif isinstance(stage, Order):
+            self.order = stage
+        elif isinstance(stage, Limit):
+            self.limit = stage
+        elif isinstance(stage, Offset):
+            self.offset = stage
+        elif isinstance(stage, Query):
+            if not self.table:
+                self.table = stage
+            #TODO: else?
+
+    def extend(self, stages):
+        for stage in stages:
+            self.append(stage)
 
     def render(self, placeholder):
-        # TODO: detect missing table
-        query = ''
+        if not self.table:
+            raise InvalidQuery("no table")  #TODO: better message
+        result_cols = ''
+        sub_count = 0  # Count of "sub queries"
         values = ()
-        prev = None  # TODO: Probably need state machine here
-        for stage in self.stages:
-            text = stage.render(placeholder)
-            if isinstance(stage, Table):
-                query = f'FROM "{text}"'
-            elif isinstance(stage, Projection):
-                query = f'SELECT {text} {query}'
-            elif isinstance(stage, Filter):
-                values += stage.values
-                if isinstance(prev, Aggregation):
-                    keyword = 'HAVING'
-                elif isinstance(prev, Filter):
-                    keyword = 'AND'
-                else:
-                    keyword = 'WHERE'
-                query = f'{query} {keyword} {text}'
-            elif isinstance(stage, Group):
-                query = f'{query} GROUP BY {text}'
-            elif isinstance(stage, Aggregation):
-                query = f'SELECT {text} {query}'
-            elif isinstance(stage, Order):
-                query = f'{query} ORDER BY {text}'
-            elif isinstance(stage, Limit):
-                query = f'{query} LIMIT {text}'
-            elif isinstance(stage, Offset):
+        text = self.table.render(placeholder)
+        if isinstance(text, tuple):
+            text, values = text
+            sub_count += 1
+            query = f'FROM ({text}) AS s{sub_count}'
+        else:
+            query = f'FROM "{text}"'
+        for i, join in enumerate(self.joins):
+            # prev_name stuff is a hack
+            if not join.prev_name:
+                join.prev_name = self.table.name if i == 0 else self.joins[i - 1].name
+            values += join.values
+            text = join.render(placeholder)
+            query = f'{query} {text}'
+        filts = []
+        for filt in self.where:
+            filts.append(filt.render(placeholder))
+            values += filt.values
+        if filts:
+            where = ' AND '.join(filts)
+            query = f'{query} WHERE {where}'
+        if self.groupby:
+            text = self.groupby.render(placeholder)
+            query = f'{query} GROUP BY {text}'
+            # Add group cols to result set automatically
+            if result_cols:
+                result_cols += ', '
+            result_cols += ', '.join([_quote(col) for col in self.groupby.cols])
+        filts = []
+        for filt in self.having:
+            values += filt.values
+            filts.append(filt.render(placeholder))
+        if filts:
+            where = ' AND '.join(filts)
+            query = f'{query} HAVING {where}'
+
+        # Projection and Aggregation both add columns to result set
+        if self.aggs:
+            if result_cols:
+                result_cols += ', '
+            result_cols += self.aggs.render(placeholder)
+        if self.proj:
+            if result_cols:
+                result_cols += ', '
+            result_cols = self.proj.render(placeholder)
+        if not result_cols:
+            result_cols = '*'
+
+        if self.distinct and self.count and result_cols == '*':
+            query = f'COUNT(*) AS "count" FROM (SELECT DISTINCT * {query}) AS tmp'
+        elif self.distinct and self.count:
+            query = f'COUNT(DISTINCT {result_cols}) AS "count" {query}'
+        elif self.distinct:
+            query = f'DISTINCT {result_cols} {query}'
+        elif self.count:
+            query = f'COUNT({result_cols}) AS "count" {query}'
+        else:
+            query = f'{result_cols} {query}'
+
+        if self.order:
+            text = self.order.render(placeholder)
+            query = f'{query} ORDER BY {text}'
+        if self.limit:
+            text = self.limit.render(placeholder)
+            query = f'{query} LIMIT {text}'
+            if self.offset:
+                text = self.offset.render(placeholder)
                 query = f'{query} OFFSET {text}'
-            elif isinstance(stage, Count):
-                if isinstance(prev, Unique):
-                    # Should have already been combined, so we should never hit this
-                    query = f'SELECT {text} FROM ({query}) AS tmp'
-                else:
-                    query = f'SELECT {text} {query}'
-            elif isinstance(stage, Unique):
-                if isinstance(prev, Projection):
-                    query = re.sub(r'^SELECT ', 'SELECT DISTINCT ', query)
-                else:
-                    query = f'SELECT DISTINCT * {query}'
-            elif isinstance(stage, Join):
-                query = f'{query} {text}'
-            elif isinstance(stage, CountUnique):
-                if stage.cols:
-                    query = f'SELECT {text} {query}'
-                else:
-                    query = f'SELECT {text} FROM (SELECT DISTINCT * {query}) AS tmp'
-            prev = stage
-        # If there's no projection...
-        if not query.startswith('SELECT'):  # Hacky
-            query = 'SELECT * ' + query
+        query = f'SELECT {query}'
         return query, values

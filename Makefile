@@ -80,10 +80,18 @@ coverage: ## check code coverage quickly with the default Python
 	coverage html
 	$(BROWSER) htmlcov/index.html
 
+
+DOC_EXCLUDES := \
+ firepit/raft.py \
+ firepit/cli.py \
+ firepit/splint.py \
+ firepit/splitter.py \
+
+
 docs: ## generate Sphinx HTML documentation, including API docs
 	rm -f docs/firepit.rst
 	rm -f docs/modules.rst
-	sphinx-apidoc -o docs/ firepit
+	sphinx-apidoc -o docs/ firepit/ $(DOC_EXCLUDES)
 	$(MAKE) -C docs clean
 	$(MAKE) -C docs html
 	$(BROWSER) docs/_build/html/index.html
