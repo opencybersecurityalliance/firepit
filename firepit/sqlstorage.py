@@ -545,6 +545,14 @@ class SqlStorage:
 
     def lookup(self, viewname, cols="*", limit=None, offset=None):
         """Get the value of `viewname`"""
+        # Preserve sort order, if it's been specified
+        # The joins below can reorder
+        viewdef = self._get_view_def(viewname)
+        match = re.search(r"ORDER BY \"([a-z0-9:'\._\-]*)\" (ASC|DESC)$", viewdef)
+        if match:
+            sort = (Column(match.group(1), viewname), match.group(2))
+        else:
+            sort = None
         qry = Query(viewname)
         if cols != "*":
             dbcols = self.columns(viewname)
@@ -569,6 +577,8 @@ class SqlStorage:
                 qry.extend(joins)
             if proj:
                 qry.append(proj)
+        if sort:
+            qry.append(Order([sort]))
         if limit:
             qry.append(Limit(limit))
         if offset:
