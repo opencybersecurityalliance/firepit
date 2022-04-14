@@ -1,6 +1,7 @@
 import pytest
 
 from firepit.query import Aggregation
+from firepit.query import Column
 from firepit.query import Count
 from firepit.query import CountUnique
 from firepit.query import Filter
@@ -47,6 +48,23 @@ def test_predicate_nulls(lhs, op, rhs, expected_text):
     text = p1.render('?')
     assert text == expected_text
     assert len(p1.values) == 0
+
+
+@pytest.mark.parametrize(
+    'lhs, op, rhs, expected_text, values', [
+        (Predicate('foo', '>', 5), 'AND', Predicate('bar', 'LIKE', 'baz%'),
+         '(("foo" > ?) AND ("bar" LIKE ?))', (5, "baz%")),
+        (Predicate('foo', '=', 5), 'OR',
+         Predicate('bar', 'IN',
+                   Query([Table('my_table'), Filter([Predicate('blah', '=', 0)]), Projection(['blah'])])),
+         '(("foo" = ?) OR ("bar" IN (SELECT "blah" FROM "my_table" WHERE ("blah" = ?))))', (5, 0)),
+    ]
+)
+def test_complex_predicate(lhs, op, rhs, expected_text, values):
+    p1 = Predicate(lhs, op, rhs)
+    text = p1.render('?')
+    assert text == expected_text
+    assert p1.values == values
 
 
 @pytest.mark.parametrize(
@@ -392,6 +410,20 @@ def test_implicit_table():
     assert qtext == 'SELECT "foo", "bar", "baz" FROM "my_table" ORDER BY "foo" ASC'
 
 
+def test_explicit_table_in_order():
+    query = Query('my_table')
+    query.append(Order([Column('foo', 'my_table')]))
+    qtext, values = query.render('%s')
+    assert qtext == 'SELECT * FROM "my_table" ORDER BY "my_table"."foo" ASC'
+
+
+def test_explicit_table_in_order_desc():
+    query = Query('my_table')
+    query.append(Order([(Column('foo', 'my_table'), Order.DESC)]))
+    qtext, values = query.render('%s')
+    assert qtext == 'SELECT * FROM "my_table" ORDER BY "my_table"."foo" DESC'
+
+
 def test_query_init_list():
     query = Query([Table('my_table'), Projection(['foo', 'bar', 'baz'])])
     qtext, values = query.render('%s')
@@ -411,3 +443,31 @@ def test_init_list_join_filter():
     assert qtext == 'SELECT DISTINCT "baz" FROM "left_table" INNER JOIN "right_table" ON "left_table"."left_col" = "right_table"."right_col" WHERE ("foo" = %s)'
     assert len(values) == 1
     assert values[0] == 'bar'
+
+
+def test_subquery():
+    subquery = Query()
+    subquery.append(Table('my_table'))
+    p1 = Predicate('foo', '>', 0)
+    where = Filter([p1])
+    subquery.append(where)
+
+    query = Query()
+    query.append(subquery)
+    query.append(Group(['baz']))
+    query.append(Aggregation([('SUM', 'foo', 'TotalFoo')]))
+    qtext, values = query.render('%s')
+    assert qtext == r'SELECT "baz", SUM("foo") AS "TotalFoo" FROM (SELECT * FROM "my_table" WHERE ("foo" > %s)) AS s1 GROUP BY "baz"'
+    assert len(values) == 1
+    assert values[0] == 0
+
+
+def test_subquery_in_predicate():
+    subquery = Query('some_view')
+    subquery.append(Projection(['some_ref']))
+
+    query = Query('some-type')
+    query.append(Filter([Predicate('id', 'IN', subquery)]))
+    qtext, values = query.render('%s')
+    assert qtext == r'SELECT * FROM "some-type" WHERE ("id" IN (SELECT "some_ref" FROM "some_view"))'
+    assert len(values) == 0

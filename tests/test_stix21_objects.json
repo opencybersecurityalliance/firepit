@@ -1,0 +1,131 @@
+{
+    "type": "autonomous-system",
+    "spec_version": "2.1",
+    "id": "autonomous-system--f720c34b-98ae-597f-ade5-27dc241e8c74",
+    "number": 15139,
+    "name": "Slime Industries",
+    "rir": "ARIN"
+}
+{
+    "type": "directory",
+    "spec_version": "2.1",
+    "id": "directory--93c0a9b0-520d-545d-9094-1a08ddf46b05",
+    "path": "C:\\Windows\\System32"
+}
+{
+    "type": "domain-name",
+    "spec_version": "2.1",
+    "id": "domain-name--3c10e93f-798e-5a26-a0c1-08156efab7f5",
+    "value": "example.com",
+    "resolves_to_refs": ["ipv4-addr--ff26c055-6336-5bc5-b98d-13d6226742dd"]
+}
+{
+    "type": "email-addr",
+    "spec_version": "2.1",
+    "id": "email-addr--2d77a846-6264-5d51-b586-e43822ea1ea3",
+    "value": "john@example.com",
+    "display_name": "John Doe"
+}
+{
+    "type": "email-addr",
+    "spec_version": "2.1",
+    "id": "email-addr--9b7e29b3-fd8d-562e-b3f0-8fc8134f5dda",
+    "value": "joe@example.com",
+    "display_name": "Joe Smith"
+}
+{
+    "type": "email-addr",
+    "spec_version": "2.1",
+    "id": "email-addr--d1b3bf0c-f02a-51a1-8102-11aba7959868",
+    "value": "bob@example.com",
+    "display_name": "Bob Smith"
+}
+{
+    "type": "email-message",
+    "spec_version": "2.1",
+    "id": "email-message--72b7698f-10c2-565a-a2a6-b4996a2f2265",
+    "from_ref": "email-addr--89f52ea8-d6ef-51e9-8fce-6a29236436ed",
+    "to_refs": ["email-addr--e4ee5301-b52d-59cd-a8fa-8036738c7194"],
+    "is_multipart": false,
+    "date": "1997-11-21T15:55:06.000Z",
+    "subject": "Saying Hello"
+}
+{
+    "type": "email-message",
+    "spec_version": "2.1",
+    "id": "email-message--0c57a381-2a17-5e61-8754-5ef96efb286c",
+    "from_ref": "email-addr--9b7e29b3-fd8d-562e-b3f0-8fc8134f5dda",
+    "to_refs": ["email-addr--d1b3bf0c-f02a-51a1-8102-11aba7959868"],
+    "is_multipart": false,
+    "date": "2004-04-19T12:22:23.000Z",
+    "subject": "Did you see this?",
+    "additional_header_fields": {
+        "Reply-To": [
+            "steve@example.com",
+            "jane@example.com"
+        ]
+    }
+}
+{
+    "type": "email-message",
+    "spec_version": "2.1",
+    "id": "email-message--cf9b4b7f-14c8-5955-8065-020e0316b559",
+    "is_multipart": true,
+    "received_lines": [
+        "from mail.example.com ([198.51.100.3]) by smtp.gmail.com with ESMTPSA id q23sm23309939wme.17.2016.07.19.07.20.32 (version=TLS1_2 cipher=ECDHE-RSA-AES128-GCM-SHA256 bits=128/128); Tue, 19 Jul 2016 07:20:40 -0700 (PDT)"
+    ],
+    "content_type": "multipart/mixed",
+    "date": "2016-06-19T14:20:40.000Z",
+    "from_ref": "email-addr--89f52ea8-d6ef-51e9-8fce-6a29236436ed",
+    "to_refs": ["email-addr--d1b3bf0c-f02a-51a1-8102-11aba7959868"],
+    "cc_refs": ["email-addr--e4ee5301-b52d-59cd-a8fa-8036738c7194"],
+    "subject": "Check out this picture of a cat!",
+    "additional_header_fields": {
+        "Content-Disposition": "inline",
+        "X-Mailer": "Mutt/1.5.23",
+        "X-Originating-IP": "198.51.100.3"
+    },
+    "body_multipart": [
+        {
+            "content_type": "text/plain; charset=utf-8",
+            "content_disposition": "inline",
+            "body": "Cats are funny!"
+        },
+        {
+            "content_type": "image/png",
+            "content_disposition": "attachment; filename=\"tabby.png\"",
+            "body_raw_ref": "artifact--4cce66f8-6eaa-53cb-85d5-3a85fca3a6c5"
+        },
+        {
+            "content_type": "application/zip",
+            "content_disposition": "attachment; filename=\"tabby_pics.zip\"",
+            "body_raw_ref": "file--6ce09d9c-0ad3-5ebf-900c-e3cb288955b5"
+        }
+    ]
+}
+{
+    "type": "file",
+    "spec_version": "2.1",
+    "id": "file--e277603e-1060-5ad4-9937-c26c97f1ca68",
+    "hashes": {
+        "SHA-256": "fe90a7e910cb3a4739bed9180e807e93fa70c90f25a8915476f5e4bfbac681db"
+    },
+    "size": 25536,
+    "name": "foo.dll"
+}
+{
+    "type": "file",
+    "spec_version": "2.1",
+    "id": "file--90bd400b-89a5-51a5-b17d-55bc7719723b",
+    "hashes": {
+        "SHA-256": "841a8921140aba50671ebb0770fecc4ee308c4952cfeff8de154ab14eeef4649"
+    },
+    "name": "quêry.dll",
+    "name_enc": "windows-1252"
+}
+{
+    "type": "ipv4-addr",
+    "spec_version": "2.1",
+    "id": "ipv4-addr--ff26c055-6336-5bc5-b98d-13d6226742dd",
+    "value": "198.51.100.3"
+}        

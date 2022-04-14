@@ -36,6 +36,16 @@ def _normalize_ws(s):
         ('windows-registry-key',
          "[windows-registry-key:values[*].name = 'foo']",
          "\"values\" LIKE '%\"name\":\"foo\"%'"),
+        ('network-traffic',
+         "[network-traffic:src_ref.value = '127.0.0.1']",
+         "\"src_ref\" IN (SELECT \"id\" FROM \"ipv4-addr\" WHERE \"value\" = '127.0.0.1')"),
+        ('email-message',
+         "[email-message:to_refs[*].value = 'name@example.com']",
+         ("JOIN \"__reflist\" AS \"r\" ON \"email-message\".\"id\" = \"r\".\"source_ref\""
+          " WHERE \"r\".\"target_ref\" IN (SELECT \"id\" FROM \"email-addr\" WHERE \"value\" = 'name@example.com')")),
+        ('file',
+         "[file:hashes.'SHA-256' = 'whatever']",
+         "\"hashes.'SHA-256'\" = 'whatever'"),
         #TODO: need MATCHES example with PCRE that Python re doesn't support
     ]
 )

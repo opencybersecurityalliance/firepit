@@ -2,9 +2,8 @@ import logging
 import os
 from collections import OrderedDict, defaultdict
 
-import orjson
+import ujson
 
-from firepit import raft
 from firepit.exceptions import DuplicateTable
 
 
@@ -47,11 +46,9 @@ class JsonWriter:
         if replace:
             raise Exception('"replace" not supported when writing JSON')
         fp = self._get_fp(obj_type)
-        #buf = '\n'.join([str(orjson.dumps(rec), 'utf-8') for rec in records]) + '\n'
-        #fp.write('{}\n'.format(buf))
         for record in records:
             obj = OrderedDict(zip(schema.keys(), record))
-            buf = str(orjson.dumps(obj), 'utf-8')
+            buf = ujson.dumps(obj)
             fp.write(buf)
 
     def types(self):
@@ -97,7 +94,7 @@ class SqlWriter:
         valnames = [f'"{col}" = EXCLUDED."{col}"' for col in colnames if col != 'id']
         valnames = ', '.join(valnames)
         stmt += f'UPDATE SET {valnames};'
-        tmp = [str(orjson.dumps(value), 'utf-8')
+        tmp = [ujson.dumps(value)
                if isinstance(value, list) else value for value in obj]
         values = tuple(tmp)
         logger.debug('_replace: "%s" values %s', stmt, values)
@@ -127,13 +124,45 @@ class SqlWriter:
         finally:
             cursor.close()
 
-    def types(self):
-        tables = self.store.tables()
+    def types(self, private):
+        tables = self.store.types(private)
         return [_strip_prefix(table, self.prefix) for table in tables]
 
     def properties(self, obj_type):
         tablename = f'{self.prefix}{obj_type}'
         return self.store.schema(tablename)
+
+
+class RecordList:
+    def __init__(self, id_idx):
+        self.id_idx = id_idx
+        self.reset()
+
+    def reset(self):
+        self.records = {} if self.id_idx else []
+
+    def append(self, record):
+        if self.id_idx:
+            rec_id = record[self.id_idx]
+            if rec_id in self.records:
+                # Update record instead
+                rec = self.records[rec_id]
+                for i, val in enumerate(record):
+                    if val is not None:
+                        rec[i] = val
+            else:
+                self.records[rec_id] = record
+        else:
+            self.records.append(record)
+
+    def __iter__(self):
+        if self.id_idx:
+            yield from self.records.values()
+        else:
+            yield from self.records
+
+    def __len__(self):
+        return len(self.records)
 
 
 class SplitWriter:
@@ -148,7 +177,7 @@ class SplitWriter:
         self.schemas = {}
         self.writer = writer
         self.batchsize = batchsize
-        self.records = defaultdict(list)
+        self.records = {}
         self.extras = extras or {}
         self.replace = replace
         self.query_id = query_id
@@ -161,7 +190,7 @@ class SplitWriter:
         return {col['name']: col['type'] for col in self.writer.properties(obj_type)}
 
     def _load_schemas(self):
-        for obj_type in self.writer.types():
+        for obj_type in self.writer.types(True):
             self.schemas[obj_type] = self._load_schema(obj_type)
 
     def write(self, obj):
@@ -177,7 +206,7 @@ class SplitWriter:
             add_table = True
         new_obj = {}
         for key, value in obj.items():
-            if len(key) > 63:
+            if len(key) > 63 or key in ['type', 'spec_version']:
                 continue
             new_obj[key] = value
             if key not in schema:
@@ -198,15 +227,24 @@ class SplitWriter:
                 for key in set(schema) - set(loaded_schema):
                     new_columns[key] = schema[key]
                     add_col = True
+        if obj_type in self.records:
+            reclist = self.records[obj_type]
+        else:
+            try:
+                id_idx = list(schema.keys()).index('id')
+            except ValueError:
+                id_idx = None
+            reclist = RecordList(id_idx)
+            self.records[obj_type] = reclist
         if add_col:
             for col, col_type in new_columns.items():
-                for rec in self.records[obj_type]:
+                for rec in reclist:
                     rec.append(None)
                 self.writer.new_property(obj_type, col, col_type)
         self.records[obj_type].append([obj.get(col) for col in schema.keys()])
         if len(self.records[obj_type]) % self.batchsize == 0:
             self.writer.write_records(obj_type, self.records[obj_type], schema, self.replace, self.query_id)
-            self.records[obj_type] = []
+            self.records[obj_type].reset()
 
     def close(self):
         if self.batchsize > 1:
@@ -214,37 +252,3 @@ class SplitWriter:
                 if recs:
                     # We've already added any necessary tables or columns
                     self.writer.write_records(obj_type, recs, self.schemas[obj_type], self.replace, self.query_id)
-
-
-if __name__ == '__main__':
-    logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s: %(message)s', level=logging.DEBUG)
-    import argparse
-    parser = argparse.ArgumentParser('Split STIX bundles by object type')
-    parser.add_argument('-d', '--directory', metavar='DIR', default='.')
-    parser.add_argument('-f', '--format', metavar='FMT', default='json')
-    parser.add_argument('-b', '--batchsize', metavar='N', default=100, type=int)
-    parser.add_argument('-p', '--prefix', metavar='PREFIX', default='test_')
-    parser.add_argument('-n', '--dbname', metavar='DBNAME', default='test.db')
-    parser.add_argument('ops', metavar='OP,...')
-    parser.add_argument('filename', metavar='FILENAME', nargs='+')
-    args = parser.parse_args()
-
-    if args.format == 'json':
-        writer = JsonWriter(args.directory)
-    elif args.format in ['sql', 'sqlite', 'sqlite3']:
-        from sqlitestorage import SQLiteStorage
-        store = SQLiteStorage(args.dbname)
-        writer = store._get_writer()  # SqlWriter(args.directory, store, prefix=args.prefix)
-    else:
-        raise NotImplementedError(args.format)
-
-    splitter = SplitWriter(writer, batchsize=args.batchsize)
-    from pyinstrument import Profiler
-    profiler = Profiler()
-    profiler.start()
-    for f in args.filename:
-        for result in raft.transform(args.ops.split(','), f):
-            splitter.write(result)
-    profiler.stop()
-    print(profiler.output_text(unicode=True, color=True))
-    splitter.close()

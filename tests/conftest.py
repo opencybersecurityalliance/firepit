@@ -4,6 +4,18 @@ import pytest
 collect_ignore = ['setup.py']
 
 
+def tmp_storage(tmpdir, clear=True):
+    dbname = os.getenv('FIREPITDB', str(tmpdir.join('test.db')))
+    session = os.getenv('FIREPITID', 'test-session')
+
+    if clear:
+        # Clear out previous test session
+        store = get_storage(dbname, session)
+        store.delete()
+
+    return get_storage(dbname, session)
+
+
 @pytest.fixture
 def fake_bundle_file():
     cwd = os.path.dirname(os.path.abspath(__file__))
@@ -41,3 +53,9 @@ def fake_bundle_list():
 def one_event_bundle():
     cwd = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(cwd, 'one_event.json')
+
+
+@pytest.fixture
+def mixed_v4_v6_bundle():
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(cwd, 'mixed-v4-v6.json')

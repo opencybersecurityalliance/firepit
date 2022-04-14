@@ -5,6 +5,7 @@ tox
 coverage
 Sphinx
 twine
+stix2
 
 pytest
 pytest-runner

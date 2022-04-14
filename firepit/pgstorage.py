@@ -3,7 +3,6 @@ import os
 import re
 from functools import lru_cache
 
-import orjson
 import psycopg2
 import psycopg2.extras
 import ujson
@@ -13,6 +12,7 @@ from firepit.exceptions import InvalidAttr
 from firepit.exceptions import UnexpectedError
 from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
+from firepit.sqlstorage import DB_VERSION
 from firepit.sqlstorage import SqlStorage
 from firepit.sqlstorage import infer_type
 from firepit.sqlstorage import validate_name
@@ -148,6 +148,8 @@ class PgStorage(SqlStorage):
         done = list(res.values())[0] if res else False
         if not done:
             self._setup()
+        else:
+            self._checkdb()
 
         logger.debug("Connection to PostgreSQL DB %s successful", dbname)
 
@@ -177,12 +179,20 @@ class PgStorage(SqlStorage):
         cursor = self._execute('BEGIN;')
         try:
             # Do DB initization from base class
+            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__metadata" '
+                    '(name TEXT, value TEXT);')
+            self._execute(stmt, cursor)
             stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
                     '(name TEXT, type TEXT, appdata TEXT);')
             self._execute(stmt, cursor)
             stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__queries" '
                     '(sco_id TEXT, query_id TEXT);')
             self._execute(stmt, cursor)
+            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__contains" '
+                    '(source_ref TEXT, target_ref TEXT, x_firepit_rank INTEGER,'
+                    ' UNIQUE(source_ref, target_ref));')
+            self._execute(stmt, cursor)
+            self._set_meta(cursor, 'dbversion', DB_VERSION)
             self.connection.commit()
             cursor.close()
         except (psycopg2.errors.DuplicateFunction, psycopg2.errors.UniqueViolation):
@@ -221,6 +231,10 @@ class PgStorage(SqlStorage):
         except psycopg2.errors.UndefinedTable as e:
             self.connection.rollback()
             raise UnknownViewname(str(e)) from e
+        except Exception as e:
+            self.connection.rollback()
+            logger.error('%s: %s', query, e, exc_info=e)
+            raise UnexpectedError(str(e)) from e
         self.connection.commit()
         return cursor
 
@@ -232,8 +246,8 @@ class PgStorage(SqlStorage):
         logger.debug('_create_table: "%s"', stmt)
         try:
             cursor = self._execute(stmt)
-            if not self.defer_index and 'x_contained_by_ref' in columns:
-                self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+            if not self.defer_index:
+                self._create_index(tablename, cursor)
             self.connection.commit()
             cursor.close()
         except (psycopg2.errors.DuplicateTable,
@@ -252,8 +266,21 @@ class PgStorage(SqlStorage):
         except psycopg2.errors.DuplicateColumn:
             self.connection.rollback()
 
+        # update all relevant viewdefs
+        stmt = 'SELECT name FROM __symtable WHERE type = %s'
+        cursor = self._query(stmt, (tablename,))
+        rows = cursor.fetchall()
+        for row in rows:
+            viewname = row['name']
+            viewdef = self._get_view_def(viewname)
+            print(viewname, viewdef)
+            viewdef = re.sub(r'^SELECT .*? FROM ', f'SELECT "{tablename}".* FROM ', viewdef, count=1)
+            print(viewname, viewdef)
+            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {viewdef}', cursor)
+
     def _create_empty_view(self, viewname, cursor):
-        cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as type WHERE 1<>1;')
+        cursor.execute(f'CREATE VIEW "{viewname}" AS SELECT NULL as id WHERE 1<>1;')
 
     def _create_view(self, viewname, select, sco_type, deps=None, cursor=None):
         """Overrides parent"""
@@ -273,12 +300,14 @@ class PgStorage(SqlStorage):
                 self._execute(f'ALTER TABLE "{viewname}" RENAME TO "_{viewname}"', cursor)
                 slct = slct.replace(viewname, f'_{viewname}')
             # Swap out the viewname for its definition
-            select = re.sub(f'"{viewname}"', f'({slct}) AS tmp', select)
+            select = re.sub(f'FROM "{viewname}"', f'FROM ({slct}) AS tmp', select, count=1)
+            select = re.sub(f'"{viewname}"', 'tmp', select)
         try:
             self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {select}', cursor)
-        except psycopg2.errors.UndefinedTable:
+        except psycopg2.errors.UndefinedTable as e:
             # Missing dep?
             self.connection.rollback()
+            logger.error(e, exc_info=e)
             cursor = self._execute('BEGIN;')
             self._create_empty_view(viewname, cursor)
         except psycopg2.errors.InvalidTableDefinition:
@@ -332,12 +361,14 @@ class PgStorage(SqlStorage):
         return [i['table_name'] for i in rows
                 if not i['table_name'].startswith('__')]
 
-    def types(self):
+    def types(self, private=False):
         stmt = ("SELECT table_name FROM information_schema.tables"
                 " WHERE table_schema = %s AND table_type != 'VIEW'"
                 "  EXCEPT SELECT name as table_name FROM __symtable")
         cursor = self._query(stmt, (self.session_id, ))
         rows = cursor.fetchall()
+        if private:
+            return [i['table_name'] for i in rows]
         # Ignore names that start with 1 or 2 underscores
         return [i['table_name'] for i in rows
                 if not i['table_name'].startswith('_')]
@@ -380,24 +411,27 @@ class PgStorage(SqlStorage):
 
         placeholders = ', '.join([f"({', '.join([self.placeholder] * len(colnames))})"] * len(objs))
         stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES {placeholders}'
+        idx = None
         if 'id' in colnames:
             idx = colnames.index('id')
-            if tablename == 'identity':
-                action = 'NOTHING'
-            else:
+            action = 'NOTHING'
+            if tablename != 'identity':
                 excluded = self._get_excluded(colnames, tablename)
-                action = f'UPDATE SET {excluded}'
+                if excluded:
+                    action = f'UPDATE SET {excluded}'
             stmt += f' ON CONFLICT (id) DO {action}'
+        elif tablename == '__contains':
+            stmt += ' ON CONFLICT DO NOTHING'
         values = []
         query_values = []
         for obj in objs:
-            if query_id:
+            if query_id and idx is not None:
                 query_values.append(obj[idx])
                 query_values.append(query_id)
-            values.extend([str(orjson.dumps(value), 'utf-8') if isinstance(value, list) else value for value in obj])
+            values.extend([ujson.dumps(value) if isinstance(value, list) else value for value in obj])
         cursor.execute(stmt, values)
 
-        if query_id:
+        if query_id and 'id' in colnames:
             # Now add to query table as well
             placeholders = ', '.join([f'({self.placeholder}, {self.placeholder})'] * len(objs))
             stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
@@ -420,12 +454,14 @@ class PgStorage(SqlStorage):
         stmt = (f'INSERT INTO "{tablename}" ({valnames})'
                 f' SELECT {valnames} FROM tmp')
         if 'id' in colnames:
-            if tablename == 'identity':
-                action = 'NOTHING'
-            else:
+            action = 'NOTHING'
+            if tablename != 'identity':
                 excluded = self._get_excluded(colnames, tablename)
-                action = f'UPDATE SET {excluded}'
+                if excluded:
+                    action = f'UPDATE SET {excluded}'
             stmt += f'  ON CONFLICT (id) DO {action}'
+        elif tablename == '__contains':
+            stmt += ' ON CONFLICT DO NOTHING'
         cursor.execute(stmt)
 
         # Don't need the temp table anymore
@@ -438,11 +474,18 @@ class PgStorage(SqlStorage):
             qobjs = [(obj[idx], query_id) for obj in objs]
             cursor.copy_expert(copy_stmt, TuplesToTextIO(qobjs, ['sco_id', 'query_id'], sep=SEP))
 
-    def finish(self):
-        if self.defer_index:
+    def finish(self, index=True):
+        if index:
+            cursor = self._query("SELECT table_name"
+                                 " FROM information_schema.tables"
+                                 " WHERE table_schema = %s"
+                                 "   AND table_name IN (%s, %s)", (self.session_id, '__contains', '__reflist'))
+            rows = cursor.fetchall()
+            tables = [i['table_name'] for i in rows]
             cursor = self._execute('BEGIN;')
-            for tablename in self.tables():
-                if 'x_contained_by_ref' in self.columns(tablename):
-                    self._execute(f'CREATE INDEX "{tablename}_obs" ON "{tablename}" ("x_contained_by_ref");', cursor)
+            if 'relationship' in self.tables():
+                tables.append('relationship')
+            for tablename in tables:
+                self._create_index(tablename, cursor)
             self.connection.commit()
             cursor.close()

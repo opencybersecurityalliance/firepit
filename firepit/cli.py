@@ -5,10 +5,10 @@ Typer-based CLI for testing and experimentation
 """
 
 import csv
-import json
+import ujson as json
 import logging
 import os
-from typing import List
+from typing import List, Dict
 
 from tabulate import tabulate
 import typer
@@ -30,6 +30,19 @@ state = {
     'dbname': os.getenv('FIREPITDB', 'stix.db'),
     'session': os.getenv('FIREPITID', 'test-id'),
 }
+
+
+format_help = "Output format [table, json, csv]"
+
+
+def print_rows(rows: List[Dict], format: str):
+    if format == 'json':
+        print(json.dumps(rows))  # , separators=[',', ':']))
+    elif format == 'csv':
+        for row in rows:
+            print(','.join([json.dumps(item) for item in row.values()]))
+    else:
+        print(tabulate(rows, headers='keys'))
 
 
 @app.callback()
@@ -113,15 +126,15 @@ def lookup(
     name: str = typer.Argument(..., help="View name to look up"),
     limit: int = typer.Option(None, help="Max number of rows to return"),
     offset: int = typer.Option(0, help="Number of rows to skip"),
-    format: str = typer.Option('table', help="Output format [table, json]"),
+    format: str = typer.Option('table', help=format_help),
+    columns: str = typer.Option(None, help="List of columns to retrieve"),
 ):
     """Retrieve a view"""
     db = get_storage(state['dbname'], state['session'])
-    rows = db.lookup(name, limit=limit, offset=offset)
-    if format == 'json':
-        print(json.dumps(rows, separators=[',', ':']))
-    else:
-        print(tabulate(rows, headers='keys'))
+    if not columns:
+        columns = '*'
+    rows = db.lookup(name, cols=columns, limit=limit, offset=offset)
+    print_rows(rows, format)
 
 
 @app.command()
@@ -157,15 +170,12 @@ def views():
 @app.command()
 def viewdata(
     views: List[str] = typer.Argument(None, help="Views to merge"),
-    format: str = typer.Option('table', help="Output format [table, json]"),
+    format: str = typer.Option('table', help=format_help),
 ):
     """Get view data for views [default is all views]"""
     db = get_storage(state['dbname'], state['session'])
     rows = db.get_view_data(views)
-    if format == 'json':
-        print(json.dumps(rows, separators=[',', ':']))
-    else:
-        print(tabulate(rows, headers='keys'))
+    print_rows(rows, format)
 
 
 @app.command()
@@ -258,7 +268,7 @@ def load(
     try:
         with open(filename, 'r') as fp:
             data = json.load(fp)
-    except json.decoder.JSONDecodeError:
+    except ValueError:  # json.decoder.JSONDecodeError:
         with open(filename, 'r') as fp:
             data = list(csv.DictReader(fp))
     db.load(name, data, sco_type, query_id, preserve_ids)
@@ -303,6 +313,58 @@ def rename(
     """Rename a view"""
     db = get_storage(state['dbname'], state['session'])
     db.rename_view(oldname, newname)
+
+
+@app.command()
+def value_counts(
+    name: str = typer.Argument(..., help="View name to look up"),
+    column: str = typer.Argument(..., help="Column to tabulate"),
+    format: str = typer.Option('table', help=format_help),
+):
+    """Retrieve the value counts of a column from a view"""
+    db = get_storage(state['dbname'], state['session'])
+    rows = db.value_counts(name, column)
+    print_rows(rows, format)
+
+
+@app.command()
+def number_observed(
+    name: str = typer.Argument(..., help="View name to look up"),
+    column: str = typer.Argument(..., help="Column to tabulate"),
+    value: str = typer.Option(None, help="Column value to filter for"),
+):
+    """Retrieve the count of values of a column from a view"""
+    db = get_storage(state['dbname'], state['session'])
+    print(db.number_observed(name, column, value))
+
+
+@app.command()
+def timestamped(
+    name: str = typer.Argument(..., help="View name to look up"),
+    column: List[str] = typer.Argument(None, help="Column(s) to tabulate"),
+    value: str = typer.Option(None, help="Column value to filter for"),
+    timestamp: str = typer.Option('first_observed',
+                                  help="Timestamp to use [first_observed, last_observed]"),
+    limit: int = typer.Option(None, help="Max number of rows to return"),
+    format: str = typer.Option('table', help=format_help),
+):
+    """Retrieve the timestamped values of a column from a view"""
+    db = get_storage(state['dbname'], state['session'])
+    rows = db.timestamped(name, column, value, timestamp, limit)
+    print_rows(rows, format)
+
+
+@app.command()
+def summary(
+    name: str = typer.Argument(..., help="View name to look up"),
+    column: str = typer.Argument(None, help="Column to tabulate"),
+    value: str = typer.Option(None, help="Column value to filter for"),
+    format: str = typer.Option('table', help=format_help),
+):
+    """Retrieve timeframe and count from a view"""
+    db = get_storage(state['dbname'], state['session'])
+    row = db.summary(name, column, value)
+    print_rows([row], format)
 
 
 if __name__ == "__main__":

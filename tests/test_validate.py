@@ -15,6 +15,7 @@ from firepit.validate import validate_path
         ('__tmp_' + uuid.uuid4().hex, True),
         ('foo;', False),
         ('foo; --', False),
+        ('network-traffic', True),
     ]
 )
 def test_validate_name(name, expected):
@@ -42,6 +43,7 @@ def test_validate_name(name, expected):
         ("file:hashes.IMPHASH", True),
         ("windows-registry-key:values[*].data", True),
         ("network-traffic:protocols[*]", True),
+        ("src_port", True),
     ]
 )
 def test_validate_path(path, expected):

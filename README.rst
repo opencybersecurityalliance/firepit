@@ -33,6 +33,8 @@ Motivation
 
 `STIX 2.0 JSON <https://docs.oasis-open.org/cti/stix/v2.0/stix-v2.0-part1-stix-core.html>`_ is a graph-like data format.  There aren't many popular tools for working with graph-like data, but there are numerous tools for working with data from SQL databases.  Firepit attempts to make those tools usable with STIX data obtained from `stix-shifter <https://github.com/opencybersecurityalliance/stix-shifter>`_.
 
+Firepit also supports `STIX 2.1 <https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html>`_
+
 Firepit is primarily designed for use with the `Kestrel Threat Hunting Language <https://github.com/opencybersecurityalliance/kestrel-lang>`_.
 
 Credits
