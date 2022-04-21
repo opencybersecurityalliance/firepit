@@ -167,6 +167,15 @@ class Predicate:
             text = f'({_quote(self.lhs)} {self.op} {placeholder})'
         return text
 
+    def set_table(self, table):
+        """Specify table for ALL columns in Predicate"""
+        if isinstance(self.lhs, Predicate):
+            self.lhs.set_table(table)
+        else:
+            self.lhs = Column(self.lhs, table)
+        if isinstance(self.rhs, Predicate):
+            self.rhs.set_table(table)
+
 
 class Filter:
     """Alternative SQL WHERE clause"""
@@ -189,6 +198,11 @@ class Filter:
         if self.op == Filter.OR:
             return f'({result})'
         return result
+
+    def set_table(self, table):
+        """Specify table for ALL Predicates in Filter"""
+        for pred in self.preds:
+            pred.set_table(table)
 
 
 class Order:

@@ -471,3 +471,18 @@ def test_subquery_in_predicate():
     qtext, values = query.render('%s')
     assert qtext == r'SELECT * FROM "some-type" WHERE ("id" IN (SELECT "some_ref" FROM "some_view"))'
     assert len(values) == 0
+
+
+def test_filter_with_set_table():
+    query = Query()
+    query.table = Table('my_table')
+    p1 = Predicate('foo', '=', 0)
+    p2 = Predicate('bar', '=', 1)
+    filt = Filter([p1, p2], Filter.OR)
+    filt.set_table('my_table')  # Not really needed in this example
+    query.where.append(filt)
+    qtext, values = query.render('%s')
+    assert qtext == r'SELECT * FROM "my_table" WHERE (("my_table"."foo" = %s) OR ("my_table"."bar" = %s))'
+    assert len(values) == 2
+    assert values[0] == 0
+    assert values[1] == 1
