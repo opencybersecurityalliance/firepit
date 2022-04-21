@@ -273,9 +273,7 @@ class PgStorage(SqlStorage):
         for row in rows:
             viewname = row['name']
             viewdef = self._get_view_def(viewname)
-            print(viewname, viewdef)
             viewdef = re.sub(r'^SELECT .*? FROM ', f'SELECT "{tablename}".* FROM ', viewdef, count=1)
-            print(viewname, viewdef)
             self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
             self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {viewdef}', cursor)
 
@@ -338,8 +336,8 @@ class PgStorage(SqlStorage):
             # that existed at that time.  We need to get the star back, to
             # match SQLite3's behavior.
             otype = self.table_type(viewname)
-            return re.sub(f"SELECT *(\"?{otype}\"?\\.\"?['A-Za-z0-9_\\.-]+\"?,? *)+ FROM",
-                          "SELECT * FROM", stmt)
+            return re.sub(f"SELECT (DISTINCT)? *(\"?{otype}\"?\\.\"?['A-Za-z0-9_\\.-]+\"?,? *)+ FROM",
+                          f"SELECT \\1 \"{otype}\".* FROM", stmt)
 
         # Must be a table
         return f'SELECT * FROM "{viewname}"'
