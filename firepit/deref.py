@@ -1,4 +1,5 @@
 import logging
+from collections import OrderedDict
 from collections import defaultdict
 
 from anytree import Node, PreOrderIter
@@ -66,17 +67,41 @@ def _get_reflists(store, view):
         Projection(['ref_name']),
         Unique()
     ])
-    print(qry.render('{}'))
     return [r['ref_name'] for r in store.run_query(qry).fetchall()]
 
 
-def auto_deref(store, view, ignore=None):
-    """Automatically resolve all refs for backward compatibility"""
+def auto_deref(store, view, ignore=None, paths=None):
+    """
+    Automatically resolve refs for backward compatibility.
+
+    If `paths` is specified, only follow/deref those specific paths/properties.
+    """
     proj = []
     cols = store.columns(view)
     if 'id' not in cols:
         # view is probably an aggregate; bail
         return [], None
+    if not ignore:
+        ignore = defaultdict(list)
+        ignore['x-oca-asset'] = ['parent_process_ref']
+    if paths:
+        # Only include these specific columns
+        include = set()
+        for path in paths:
+            if path == "*":
+                include.update(cols)
+                break
+            if "_ref" in path and path not in cols:  # This seems like a hack
+                part = path.split('.')[0]
+                include.add(part)
+            elif path in cols:
+                include.add(path)
+                proj.append(Column(path, view))
+            else:
+                # Not sure where it came from
+                include.add(path)
+                proj.append(path)
+        cols = [c for c in cols if c in include]
     for col in cols:
         if (not col.endswith("_ref") or
             view == 'relationship' and col in ('source_ref' ,'target_ref')):
@@ -111,8 +136,27 @@ def auto_deref(store, view, ignore=None):
     #reflists = _get_reflists(store, view)
     #for reflist in reflists:
 
-    if proj:
+    if paths and paths != ['*']:
+        # Trim/reorder projection
+        ordered_proj = []
+        col_map = OrderedDict()
+        if proj:
+            for p in proj:
+                if hasattr(p, "alias") and p.alias:
+                    name = p.alias
+                elif hasattr(p, "name"):
+                    name = p.name
+                else:
+                    name = p
+                col_map[name] = p
+            for p in paths:
+                ordered_proj.append(col_map.get(p, p))
+        elif include:
+            ordered_proj = paths
+        proj = Projection(ordered_proj)
+    else:
         proj = Projection(proj)
+
     return joins, proj
 
 
@@ -120,9 +164,6 @@ def _dfs(store, sco_type, parent=None, ref=None, all_types=None, ignore=None):
     """Depth-first search for reference dependencies"""
     node = Node(sco_type, parent=parent, edge=ref)
     props = store.columns(sco_type)
-    if not ignore:
-        ignore = defaultdict(list)
-        ignore['x-oca-asset'] = ['parent_process_ref']
     ignore_props = ignore.get(sco_type, [])
     for prop in props:
         if prop.endswith("_ref") and prop not in ignore_props:
