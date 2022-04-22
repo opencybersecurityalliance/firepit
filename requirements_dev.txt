@@ -8,6 +8,7 @@ twine
 stix2
 
 pytest
+pytest-cov
 pytest-runner
 pylint
 bandit
