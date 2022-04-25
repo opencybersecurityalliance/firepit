@@ -74,6 +74,9 @@ test: ## run tests quickly with the default Python
 test-all: ## run tests on every Python version with tox
 	tox
 
+test-cov: ## run tests with code coverage assessment
+	pytest --cov=firepit --cov-report=xml
+
 coverage: ## check code coverage quickly with the default Python
 	coverage run --source firepit -m pytest
 	coverage report -m

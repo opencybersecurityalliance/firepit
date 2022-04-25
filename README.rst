@@ -14,6 +14,9 @@ Firepit - STIX Columnar Storage
         :target: https://github.com/opencybersecurityalliance/firepit
         :alt: Unit Test Status
 
+.. image:: https://codecov.io/gh/opencybersecurityalliance/firepit/branch/develop/graph/badge.svg?token=Pu7pkqmE5W
+        :target: https://codecov.io/gh/opencybersecurityalliance/firepit
+
 
 Columnar storage for STIX 2.0 observations.
 
