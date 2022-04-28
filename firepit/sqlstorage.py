@@ -232,6 +232,10 @@ class SqlStorage:
         # This is DB-specific
         raise NotImplementedError('Storage._create_view')
 
+    def _recreate_view(self, viewname, viewdef, cursor):
+        self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+        self._execute(f'CREATE VIEW "{viewname}" AS {viewdef}', cursor)
+
     def _get_view_def(self, viewname):
         # This is DB-specific
         raise NotImplementedError('Storage._get_view_def')
@@ -295,7 +299,7 @@ class SqlStorage:
 
         # Need to convert viewname from identifier to string, so use single quotes
         cursor = self._execute('BEGIN;')
-        select = (f'SELECT * FROM "{sco_type}" WHERE "id" IN'
+        select = (f'SELECT "{sco_type}".* FROM "{sco_type}" WHERE "id" IN'
                   f' (SELECT "{sco_type}".id FROM "{sco_type}"'
                   f'  INNER JOIN __queries ON "{sco_type}".id = __queries.sco_id'
                   f'  WHERE {where});')
@@ -475,10 +479,8 @@ class SqlStorage:
                 splitter.write(obj)
             splitter.close()
             viewdef = self._get_view_def(viewname)
-            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            self._recreate_view(viewname, viewdef, cursor)
 
-            # Recreate view
-            self._execute(f'CREATE VIEW "{viewname}" AS {viewdef}', cursor)
 
         self.connection.commit()
 
@@ -705,7 +707,9 @@ class SqlStorage:
         for name in input_views:
             validate_name(name)
             types.add(self.table_type(name))
-            selects.append(self._get_view_def(name))
+            viewdef = self._get_view_def(name)
+            logger.debug('merge: %s -> %s', name, viewdef)
+            selects.append(viewdef)
         if len(types) > 1:
             raise IncompatibleType('cannot merge types ' + ', '.join(types))
         stmt = ' UNION '.join(selects)
@@ -761,6 +765,7 @@ class SqlStorage:
         deps = [on]
         if not sco_type:
             sco_type = self.table_type(on)
+            logger.debug('Deduced type of %s as %s', viewname, sco_type)
         found_agg = bool(query.aggs)
         if query.groupby:
             group_cols = query.groupby.cols
