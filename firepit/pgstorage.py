@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from collections import defaultdict
 from functools import lru_cache
 
 import psycopg2
@@ -108,6 +109,36 @@ class TuplesToTextIO:
             result = self.buf
             self.buf = ''
         return result
+
+
+def _rewrite_select(stmt):
+    p = r"SELECT (DISTINCT )?(\"observed-data\".[\w_]+\W+)?(\"?[\w\d_-]+\"?\.['\w\d\._-]+,?\W+)+FROM"
+    m = re.search(p, stmt)
+    if m:
+        matched = m.group(0).split()[1:-1]  # Drop SELECT and FROM
+        if matched[0].strip() == 'DISTINCT':
+            distinct = 'DISTINCT '
+        else:
+            distinct = ''
+        data = defaultdict(list)
+        order = []
+        for i in matched:
+            table, _, column = i.partition('.')
+            column = column.rstrip(',')
+            data[table].append(column)
+            if table not in order and not table.startswith('DISTINCT'):
+                order.append(table)
+        new_cols = []
+        for table in order:
+            num = len(data[table])
+            if num > 1:
+                new_cols.append(f'{table}.*')
+            elif num == 1:
+                col = data[table][0]
+                new_cols.append(f'{table}.{col}')
+        repl = f'SELECT {distinct}' + ', '.join(new_cols) + ' FROM'
+        stmt = re.sub(p, repl, stmt, count=1)
+    return stmt
 
 
 class PgStorage(SqlStorage):
@@ -267,14 +298,18 @@ class PgStorage(SqlStorage):
             self.connection.rollback()
 
         # update all relevant viewdefs
+        stmt = 'SELECT name, type FROM __symtable'
+        cursor = self._query(stmt, (tablename,))
+        rows = cursor.fetchall()
+        for row in rows:
+            logger.debug('%s', row)
         stmt = 'SELECT name FROM __symtable WHERE type = %s'
         cursor = self._query(stmt, (tablename,))
         rows = cursor.fetchall()
         for row in rows:
             viewname = row['name']
             viewdef = self._get_view_def(viewname)
-            viewdef = re.sub(r'^SELECT .*? FROM ', f'SELECT "{tablename}".* FROM ', viewdef, count=1)
-            self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
+            viewdef = re.sub(r'^SELECT .*? FROM ', f'SELECT "{tablename}".* FROM ', viewdef, count=1)  # FIXME: is this right?
             self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {viewdef}', cursor)
 
     def _create_empty_view(self, viewname, cursor):
@@ -323,6 +358,9 @@ class PgStorage(SqlStorage):
             self._new_name(cursor, viewname, sco_type)
         return cursor
 
+    def _recreate_view(self, viewname, viewdef, cursor):
+        self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {viewdef}', cursor)
+
     def _get_view_def(self, viewname):
         cursor = self._query("SELECT definition"
                              " FROM pg_views"
@@ -335,9 +373,10 @@ class PgStorage(SqlStorage):
             # PostgreSQL will "expand" the original "*" to the columns
             # that existed at that time.  We need to get the star back, to
             # match SQLite3's behavior.
-            otype = self.table_type(viewname)
-            return re.sub(f"SELECT (DISTINCT)? *(\"?{otype}\"?\\.\"?['A-Za-z0-9_\\.-]+\"?,? *)+ FROM",
-                          f"SELECT \\1 \"{otype}\".* FROM", stmt)
+            logger.debug('%s original:  %s', viewname, stmt)
+            stmt = _rewrite_select(stmt)
+            logger.debug('%s rewritten: %s', viewname, stmt)
+            return stmt
 
         # Must be a table
         return f'SELECT * FROM "{viewname}"'

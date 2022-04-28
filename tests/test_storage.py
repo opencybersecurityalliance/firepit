@@ -393,6 +393,43 @@ def test_reassign_enriched_refs(fake_bundle_file, tmpdir):
             assert dest['x_enrich'] == 1
 
 
+def test_reassign_with_dependents(fake_bundle_file, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [fake_bundle_file])
+
+    store.extract('urls', 'url', 'q1', "[url:value LIKE '%page/1%']")
+    urls = store.lookup('urls')
+    assert len(urls) == 14
+
+    # Create new view based on this one
+    qry = store.timestamped('urls', run=False)
+    store.assign_query('ts_urls', qry)
+
+    # Simulate running some analytics to enrich these
+    for url in urls:
+        url['x_enrich'] = 1
+
+    # Now reload into the same var
+    store.reassign('urls', urls)
+    rows = store.lookup('urls')
+    print(ujson.dumps(rows, indent=4))
+    assert len(rows) == len(urls)
+    assert rows[0]['x_enrich'] == 1
+
+    # Make sure original var length isn't modified
+    urls = store.lookup('urls')
+    assert len(urls) == 14
+
+    # Original var's objects should have been updated
+    assert urls[0]['x_enrich'] == 1
+
+    # Check dependent view
+    ts_urls = store.lookup('ts_urls')
+    print(ujson.dumps(ts_urls, indent=4))
+    assert ts_urls[0]['x_enrich'] == 1
+    assert "first_observed" in ts_urls[0]
+
+
 def test_appdata(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [fake_bundle_file])
