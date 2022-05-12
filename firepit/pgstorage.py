@@ -250,9 +250,6 @@ class PgStorage(SqlStorage):
             **kwargs
         )
 
-    def __del__(self):
-        self.close()
-
     def _query(self, query, values=None, cursor=None):
         """Private wrapper for logging SQL query"""
         logger.debug('Executing query: %s', query)

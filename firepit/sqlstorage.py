@@ -90,8 +90,8 @@ class SqlStorage:
 
     def close(self):
         if self.connection:
-            logger.debug("Closing %s connection",
-                         self.connection.__class__.__module__.split('.', 1)[0])
+            #logger.debug("Closing %s connection",
+            #             self.connection.__class__.__module__.split('.', 1)[0])
             self.connection.close()
 
     def _get_writer(self, **kwargs):
