@@ -359,6 +359,9 @@ class PgStorage(SqlStorage):
         except psycopg2.errors.SyntaxError as e:
             # We see this on SQL injection attempts
             raise UnexpectedError(e.args[0]) from e
+        except psycopg2.errors.UndefinedColumn as e:
+            m = re.search(r'^column (.*) does not exist', e.args[0])
+            raise InvalidAttr(m.group(1)) from e
         if is_new:
             self._new_name(cursor, viewname, sco_type)
         return cursor
