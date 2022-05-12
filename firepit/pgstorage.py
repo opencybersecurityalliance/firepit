@@ -111,6 +111,14 @@ class TuplesToTextIO:
         return result
 
 
+def _rewrite_query(qry):
+    parts = qry.split('UNION')
+    new_parts = []
+    for part in parts:
+        new_parts.append(_rewrite_select(part).strip())
+    return ' UNION '.join(new_parts)
+
+
 def _rewrite_select(stmt):
     p = r"SELECT (DISTINCT )?(\"observed-data\".[\w_]+\W+)?(\"?[\w\d_-]+\"?\.['\w\d\._-]+,?\W+)+FROM"
     m = re.search(p, stmt)
@@ -309,7 +317,6 @@ class PgStorage(SqlStorage):
         for row in rows:
             viewname = row['name']
             viewdef = self._get_view_def(viewname)
-            viewdef = re.sub(r'^SELECT .*? FROM ', f'SELECT "{tablename}".* FROM ', viewdef, count=1)  # FIXME: is this right?
             self._execute(f'CREATE OR REPLACE VIEW "{viewname}" AS {viewdef}', cursor)
 
     def _create_empty_view(self, viewname, cursor):
@@ -374,7 +381,7 @@ class PgStorage(SqlStorage):
             # that existed at that time.  We need to get the star back, to
             # match SQLite3's behavior.
             logger.debug('%s original:  %s', viewname, stmt)
-            stmt = _rewrite_select(stmt)
+            stmt = _rewrite_query(stmt)
             logger.debug('%s rewritten: %s', viewname, stmt)
             return stmt
 
