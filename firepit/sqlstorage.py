@@ -88,6 +88,12 @@ class SqlStorage:
         # Python-to-SQL type mapper
         self.infer_type = infer_type
 
+    def close(self):
+        if self.connection:
+            logger.debug("Closing %s connection",
+                         self.connection.__class__.__module__.split('.', 1)[0])
+            self.connection.close()
+
     def _get_writer(self, **kwargs):
         """Get a DB inserter object"""
         # This is DB-specific

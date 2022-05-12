@@ -251,9 +251,7 @@ class PgStorage(SqlStorage):
         )
 
     def __del__(self):
-        if self.connection:
-            logger.debug("Closing PostgreSQL DB connection")
-            self.connection.close()
+        self.close()
 
     def _query(self, query, values=None, cursor=None):
         """Private wrapper for logging SQL query"""
