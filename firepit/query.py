@@ -117,7 +117,7 @@ class Predicate:
                 rhs = 'NULL'
             if lhs.endswith('[*]'):  # STIX list property
                 lhs = lhs[:-3]
-                if rhs.lower() != 'null':
+                if rhs not in ['null', 'NULL']:
                     rhs = f"%{rhs}%"  # wrap with SQL wildcards since list is encoded as string
                     if op == '=':
                         op = 'LIKE'
