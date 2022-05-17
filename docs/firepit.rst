@@ -76,10 +76,26 @@ firepit.stix21 module
    :undoc-members:
    :show-inheritance:
 
+firepit.timestamp module
+------------------------
+
+.. automodule:: firepit.timestamp
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 firepit.validate module
 -----------------------
 
 .. automodule:: firepit.validate
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+firepit.woodchipper module
+--------------------------
+
+.. automodule:: firepit.woodchipper
    :members:
    :undoc-members:
    :show-inheritance:
