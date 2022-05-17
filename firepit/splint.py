@@ -14,6 +14,10 @@ import uuid
 import typer
 
 from firepit import raft
+from firepit import woodchipper
+from firepit.timestamp import KNOWN_TIMESTAMPS
+from firepit.timestamp import timefmt
+from firepit.timestamp import to_datetime
 
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
@@ -26,19 +30,9 @@ app = typer.Typer(
 )
 
 
-TIME_FMT = '%Y-%m-%dT%H:%M:%S.%f'
-
-
-def _timefmt(ts):
-    return ts.strftime(TIME_FMT)[:-3] + 'Z'
-
-
 def _start_bundle():
     bundle_id = 'bundle--' + str(uuid.uuid4())
-    sys.stdout.write('{"type":"bundle",'
-                     '"id": "')
-    sys.stdout.write(bundle_id)
-    sys.stdout.write('","objects":[')
+    sys.stdout.write('{"type":"bundle","id":"%s","objects":[' % bundle_id)
 
 
 def _dump_obj(obj, count):
@@ -72,7 +66,7 @@ def randomize_ids(
                 obj['created_by_ref'] = ds_id
             obj['id'] = new_id
             if 'modified' in obj:
-                obj['modified'] = _timefmt(datetime.datetime.utcnow())
+                obj['modified'] = timefmt(datetime.datetime.utcnow())
         _dump_obj(obj, count)
         count += 1
     _end_bundle()
@@ -109,7 +103,7 @@ def dedup_ids(
                 obj['created_by_ref'] = ds_id
                 modified = True
             if 'modified' in obj and modified:
-                obj['modified'] = _timefmt(datetime.datetime.utcnow())
+                obj['modified'] = timefmt(datetime.datetime.utcnow())
         _dump_obj(obj, count)
         count += 1
     _end_bundle()
@@ -145,8 +139,16 @@ def upgrade(
     _end_bundle()
 
 
-def _to_dt(timestamp):
-    return datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+def _shift_dt(dt, orig_start, new_start, scale):
+    pos = (dt - orig_start)  # relative time in orig timeframe
+    shift = datetime.timedelta(seconds=pos.total_seconds() * scale)
+    return new_start + shift
+
+
+def _shift_ts(ts, orig_start, new_start, scale, prec=3):
+    dt = to_datetime(ts)
+    new_dt = _shift_dt(dt, orig_start, new_start, scale)
+    return timefmt(new_dt, prec)
 
 
 @app.command()
@@ -158,7 +160,7 @@ def timeshift(
     """Timeshift STIX observations in a bundle"""
     _start_bundle()
     # Idea: 2 passes - first to get original timeframe, second to timeshift
-    orig_start = None  # _timefmt(datetime.datetime.utcnow())
+    orig_start = None  # timefmt(datetime.datetime.utcnow())
     orig_end = None
     count = 0
 
@@ -176,13 +178,13 @@ def timeshift(
                 count += 1
 
     # Compute original duration
-    ots0 = _to_dt(orig_start)
-    ots1 = _to_dt(orig_end)
+    ots0 = to_datetime(orig_start)
+    ots1 = to_datetime(orig_end)
     orig_duration = ots1 - ots0
 
     # Compute new duration
-    nts0 = _to_dt(start)
-    nts1 = _to_dt(end)
+    nts0 = to_datetime(start)
+    nts1 = to_datetime(end)
     new_duration = nts1 - nts0
 
     scale = new_duration / orig_duration
@@ -193,17 +195,29 @@ def timeshift(
         if 'type' in obj:
             obj_type = obj['type']
             if obj_type == 'observed-data':
-                fo = _to_dt(obj['first_observed'])
-                pos = (fo - ots0)  # relative time in orig timeframe
-                shift = datetime.timedelta(seconds=pos.total_seconds() * scale)
-                new_fo = nts0 + shift
-                obj['first_observed'] = _timefmt(new_fo)
-                lo = _to_dt(obj['last_observed'])
+                fo = to_datetime(obj['first_observed'])
+                new_fo = _shift_dt(fo, ots0, nts0, scale)
+                obj['first_observed'] = timefmt(new_fo)
+                lo = to_datetime(obj['last_observed'])
                 dur = lo - fo
-                obj['last_observed'] = _timefmt(new_fo + dur * scale)
+                obj['last_observed'] = timefmt(new_fo + dur * scale)
+                for sco in obj['objects'].values():
+                    for prop, val in sco.items():
+                        if prop in KNOWN_TIMESTAMPS:
+                            sco[prop] = _shift_ts(val, ots0, nts0, scale, prec=6)
+                if 'modified' in obj:
+                    obj['modified'] = timefmt(datetime.datetime.utcnow())
         _dump_obj(obj, count)
         count += 1
     _end_bundle()
+
+
+@app.command()
+def convert(
+    filename: str = typer.Argument(..., help="File to convert to STIX"),
+):
+    """Convert various log files to STIX 2.0 bundles"""
+    woodchipper.convert(filename)
 
 
 if __name__ == "__main__":
