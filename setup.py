@@ -12,7 +12,7 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     'anytree',
-    'dateutil',
+    'python-dateutil',
     'ijson',
     'lark-parser',
     'psycopg2-binary',
