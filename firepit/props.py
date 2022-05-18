@@ -87,6 +87,7 @@ def auto_agg_tuple(sco_type, prop, col_type):
 
 #TODO: convert to dicts?
 def ref_type(sco_type, part):
+    """Get STIX SCO type for reference prop `part`"""
     if part == 'parent_ref':
         return ['process']
     elif part in ['dst_ref', 'dst_ip_ref', 'src_ref', 'src_ip_ref']:

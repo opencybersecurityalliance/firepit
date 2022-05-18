@@ -120,7 +120,7 @@ def _rewrite_query(qry):
 
 
 def _rewrite_select(stmt):
-    p = r"SELECT (DISTINCT )?(\"observed-data\".[\w_]+\W+)?(\"?[\w\d_-]+\"?\.['\w\d\._-]+,?\W+)+FROM"
+    p = r"SELECT (DISTINCT )?(\"observed-data\".[\w_]+\W+)?(\"?[\w\d_-]+\"?\.\"?['\w\d\._-]+\"?,?\W+)+FROM"
     m = re.search(p, stmt)
     if m:
         matched = m.group(0).split()[1:-1]  # Drop SELECT and FROM

@@ -88,3 +88,34 @@ data organized.
 
     Options:
       --help  Show this message and exit.
+
+
+splint
+------
+
+Firepit also includes a utility called `splint`.  This tool supports
+multiple commands for manipulating STIX 2.0 bundles (2.1 is not yet
+supported), including randomzing IDs, shifting timestamps, and
+converting other log formats to STIX observations.
+
+The `convert` command currently supports the JSON format at
+https://securitydatasets.com as well as `Zeek <https://zeek.org/>`_
+`conn.log` and `dns.log`.
+
+.. code-block::
+
+   $ splint
+   Usage: splint [OPTIONS] COMMAND [ARGS]...
+
+     STIX processing and linting
+
+   Options:
+     --help  Show this message and exit.
+
+   Commands:
+     convert        Convert various log files to STIX 2.0 bundles
+     dedup-ids      Replace duplicate IDs with random IDs
+     limit          Truncate STIX bundle
+     randomize-ids  Randomize STIX observation IDs in a bundle
+     timeshift      Timeshift STIX observations in a bundle
+     upgrade        Upgrade a STIX 2.0 bundle to 2.1

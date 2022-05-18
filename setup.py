@@ -12,6 +12,7 @@ with open('HISTORY.rst') as history_file:
 
 requirements = [
     'anytree',
+    'python-dateutil',
     'ijson',
     'lark-parser',
     'psycopg2-binary',
@@ -57,6 +58,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/opencybersecurityalliance/firepit',
-    version='2.0.3',
+    version='2.1.0',
     zip_safe=False,
 )

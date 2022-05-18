@@ -2,6 +2,12 @@
 History
 =======
 
+2.1.0 (2022-05-18)
+------------------
+
+- Add ``splint convert`` command to convert some logs files to STIX
+  bundles
+
 2.0.0 (2022-04-01)
 ------------------
 
