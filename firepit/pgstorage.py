@@ -329,9 +329,8 @@ class PgStorage(SqlStorage):
             is_new = False
             # Get the query that makes up the current view
             slct = self._get_view_def(viewname)
-            if self._is_sql_view(viewname, cursor):
-                self._execute(f'DROP VIEW IF EXISTS "{viewname}"', cursor)
-            else:
+            if not self._is_sql_view(viewname, cursor):
+                # Must be a table...
                 self._execute(f'ALTER TABLE "{viewname}" RENAME TO "_{viewname}"', cursor)
                 slct = slct.replace(viewname, f'_{viewname}')
             # Swap out the viewname for its definition
