@@ -1,4 +1,5 @@
 """Utilities for generating SQL while avoiding SQL injection vulns"""
+import re
 
 from firepit.validate import validate_name
 from firepit.validate import validate_path
@@ -7,10 +8,11 @@ COMP_OPS = ['=', '<>', '!=', '<', '>', '<=', '>=', 'LIKE', 'IN', 'IS', 'IS NOT']
 PRED_OPS = ['AND', 'OR']
 JOIN_TYPES = ['INNER', 'OUTER', 'LEFT OUTER', 'CROSS']
 AGG_FUNCS = ['COUNT', 'SUM', 'MIN', 'MAX', 'AVG', 'NUNIQUE']
+COL_PATTERN = r"^(\*|[A-Za-z_]+)$"
 
 
 def _validate_column_name(name):
-    if name != '*':
+    if not bool(re.match(COL_PATTERN, name)):
         validate_path(name)  # This is for STIX object paths, not column names...
 
 
@@ -111,12 +113,17 @@ class Predicate:
                 raise InvalidPredicateOperand(str(rhs))
             self.values = lhs.values + rhs.values
         else:
+            table = alias = None
             if op not in COMP_OPS:
                 raise InvalidComparisonOperator(op)
             if rhs is None:
                 rhs = 'NULL'
-            if lhs.endswith('[*]'):  # STIX list property
-                lhs = lhs[:-3]
+            if isinstance(lhs, Column):
+                table = lhs.table
+                alias = lhs.alias
+                lhs = lhs.name
+            if '[*]' in lhs:  # STIX list property
+                lhs, _, _ = lhs.partition('[*]')  # Need to remove this
                 if rhs not in ['null', 'NULL']:
                     rhs = f"%{rhs}%"  # wrap with SQL wildcards since list is encoded as string
                     if op == '=':
@@ -124,7 +131,7 @@ class Predicate:
                     elif op == '!=':
                         op = 'NOT LIKE'
             if isinstance(lhs, str):
-                validate_path(lhs)
+                lhs = Column(lhs, table, alias)
             if rhs in ['null', 'NULL']:
                 self.values = ()
                 if op not in ['=', '!=', '<>', 'IS', 'IS NOT']:
@@ -171,6 +178,8 @@ class Predicate:
         """Specify table for ALL columns in Predicate"""
         if isinstance(self.lhs, Predicate):
             self.lhs.set_table(table)
+        elif isinstance(self.lhs, Column):
+            self.lhs = Column(self.lhs.name, table)
         else:
             self.lhs = Column(self.lhs, table)
         if isinstance(self.rhs, Predicate):
