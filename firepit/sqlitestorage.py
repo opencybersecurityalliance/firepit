@@ -32,7 +32,8 @@ def _in_subnet(value, net):
 
 def _match(pattern, value):
     """User-defined function to implement SQL MATCH/STIX MATCHES"""
-    return value is not None and bool(re.match(pattern, value))
+    return (value is not None and
+            bool(re.search(pattern, value, re.DOTALL)))
 
 
 class SQLiteStorage(SqlStorage):
