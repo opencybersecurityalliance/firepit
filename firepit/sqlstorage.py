@@ -341,7 +341,7 @@ class SqlStorage:
             else:
                 action = 'NOTHING'
             stmt += f' ON CONFLICT (id) DO {action}'
-        values = tuple([ujson.dumps(value)
+        values = tuple([ujson.dumps(value, ensure_ascii=False)
                         if isinstance(value, list) else value for value in obj])
         logger.debug('_upsert: "%s", %s', stmt, values)
         cursor.execute(stmt, values)

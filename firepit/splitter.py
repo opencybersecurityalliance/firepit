@@ -48,7 +48,7 @@ class JsonWriter:
         fp = self._get_fp(obj_type)
         for record in records:
             obj = OrderedDict(zip(schema.keys(), record))
-            buf = ujson.dumps(obj)
+            buf = ujson.dumps(obj, ensure_ascii=False)
             fp.write(buf)
 
     def types(self):
@@ -94,7 +94,7 @@ class SqlWriter:
         valnames = [f'"{col}" = EXCLUDED."{col}"' for col in colnames if col != 'id']
         valnames = ', '.join(valnames)
         stmt += f'UPDATE SET {valnames};'
-        tmp = [ujson.dumps(value)
+        tmp = [ujson.dumps(value, ensure_ascii=False)
                if isinstance(value, list) else value for value in obj]
         values = tuple(tmp)
         logger.debug('_replace: "%s" values %s', stmt, values)

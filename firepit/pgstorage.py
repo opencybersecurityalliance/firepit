@@ -74,7 +74,7 @@ class ListToTextIO:
         try:
             while n > len(self.buf):
                 obj = next(self.it)
-                vals = [ujson.dumps(val) if isinstance(val, list)
+                vals = [ujson.dumps(val, ensure_ascii=False) if isinstance(val, list)
                         else _text_encode(val) for val in obj]
                 self.buf += self.sep.join(vals) + '\n'
             result = self.buf[:n]
@@ -469,7 +469,8 @@ class PgStorage(SqlStorage):
             if query_id and idx is not None:
                 query_values.append(obj[idx])
                 query_values.append(query_id)
-            values.extend([ujson.dumps(value) if isinstance(value, list) else value for value in obj])
+            values.extend([ujson.dumps(value, ensure_ascii=False)
+                           if isinstance(value, list) else value for value in obj])
         cursor.execute(stmt, values)
 
         if query_id and 'id' in colnames:

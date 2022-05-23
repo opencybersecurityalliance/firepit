@@ -37,10 +37,10 @@ format_help = "Output format [table, json, csv]"
 
 def print_rows(rows: List[Dict], format: str):
     if format == 'json':
-        print(json.dumps(rows))  # , separators=[',', ':']))
+        print(json.dumps(rows, ensure_ascii=False))  # , separators=[',', ':']))
     elif format == 'csv':
         for row in rows:
-            print(','.join([json.dumps(item) for item in row.values()]))
+            print(','.join([json.dumps(item, ensure_ascii=False) for item in row.values()]))
     else:
         print(tabulate(rows, headers='keys'))
 
