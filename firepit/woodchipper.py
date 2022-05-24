@@ -873,7 +873,7 @@ def convert(input_file):
         raise e
 
     bundle['objects'] = objects
-    print(json.dumps(bundle, indent=4))
+    print(json.dumps(bundle, indent=4, ensure_ascii=False))
 
 
 if __name__ == '__main__':

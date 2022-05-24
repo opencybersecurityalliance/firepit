@@ -36,7 +36,7 @@ def _start_bundle():
 
 
 def _dump_obj(obj, count):
-    blob = json.dumps(obj, separators=(',', ':'))
+    blob = json.dumps(obj, separators=(',', ':'), ensure_ascii=False)
     if count:
         sys.stdout.write(f',{blob}')
     else:

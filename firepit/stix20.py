@@ -37,6 +37,11 @@ def _convert_op(sco_type, prop, op, rhs):
         else:
             raise ValueError(
                 f'{orig_op} not supported for SCO type {sco_type}')
+    elif prop.endswith('payload_bin'):
+        if op == 'MATCHES':
+            return f'{neg} match_bin(CAST({rhs} AS TEXT), "{prop}")'
+        elif op == 'LIKE':
+            return f'{neg} like_bin(CAST({rhs} AS TEXT), "{prop}")'
     elif op == 'MATCHES':
         return f'{neg} match({rhs}, "{prop}")'
     prop, chunk, subprop = prop.partition('[*]')
