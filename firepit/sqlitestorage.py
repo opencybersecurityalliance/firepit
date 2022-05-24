@@ -4,6 +4,8 @@ import os
 import re
 import sqlite3
 
+from base64 import b64decode
+
 from firepit.exceptions import DuplicateTable
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import UnexpectedError
@@ -36,6 +38,25 @@ def _match(pattern, value):
             bool(re.search(pattern, value, re.DOTALL)))
 
 
+def _match_bin(pattern, value):
+    """User-defined function to implement SQL MATCH/STIX MATCHES for binaries"""
+    if value is not None:
+        val = b64decode(value).decode("utf-8")
+        return bool(re.search(pattern, val, re.DOTALL))
+    return False
+
+def _like_bin(pattern, value):
+    """User-defined function to implement SQL/STIX LIKE for binaries"""
+    if value is not None:
+        try:
+            exp = re.escape(pattern).replace('%', '.*').replace('_', '.')
+            val = b64decode(value).decode("utf-8")
+            return bool(re.search(exp, val, re.DOTALL))
+        except Exception as e:
+            logger.error('%s', e, exc_info=e)
+    return False
+
+
 class SQLiteStorage(SqlStorage):
     def __init__(self, dbname):
         super().__init__()
@@ -50,6 +71,8 @@ class SQLiteStorage(SqlStorage):
 
         # Create function for SQL MATCH
         self.connection.create_function("match", 2, _match)
+        self.connection.create_function("match_bin", 2, _match_bin)
+        self.connection.create_function("like_bin", 2, _like_bin)
 
         cursor = self.connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='__queries'")

@@ -155,7 +155,15 @@ class Predicate:
             text += self.rhs.render(placeholder)
             return f'({text})'  # Do we really need parens?
 
-        if self.rhs in ['null', 'NULL']:
+        neg, _, op = self.op.rpartition(' ')
+
+        # Special case for base64-encoded artifacts
+        if self.lhs.name == 'payload_bin' and op in ('LIKE', 'MATCHES'):
+            if op == 'MATCHES':
+                text = f'{neg} match_bin(CAST({placeholder} AS TEXT), {_quote(self.lhs)})'
+            elif op == 'LIKE':
+                text = f'{neg} like_bin(CAST({placeholder} AS TEXT), {_quote(self.lhs)})'
+        elif self.rhs in ['null', 'NULL']:
             if self.op in ['!=', '<>']:
                 text = f'({_quote(self.lhs)} IS NOT NULL)'
             elif self.op == '=':
@@ -164,7 +172,7 @@ class Predicate:
                 raise InvalidComparisonOperator(self.op)
         elif isinstance(self.rhs, Column):
             text = f'({_quote(self.lhs)} {self.op} {_quote(self.rhs)})'
-        elif self.op == 'IN':
+        elif op == 'IN':
             if isinstance(self.rhs, Query):  # there's probably a better way to detect this
                 rhs, _ = self.rhs.render(placeholder)
             else:
