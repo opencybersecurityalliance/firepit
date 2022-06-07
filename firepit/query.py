@@ -4,7 +4,8 @@ import re
 from firepit.validate import validate_name
 from firepit.validate import validate_path
 
-COMP_OPS = ['=', '<>', '!=', '<', '>', '<=', '>=', 'LIKE', 'IN', 'IS', 'IS NOT']
+COMP_OPS = ['=', '<>', '!=', '<', '>', '<=', '>=',
+            'LIKE', 'IN', 'IS', 'NOT LIKE', 'NOT IN', 'IS NOT']
 PRED_OPS = ['AND', 'OR']
 JOIN_TYPES = ['INNER', 'OUTER', 'LEFT OUTER', 'CROSS']
 AGG_FUNCS = ['COUNT', 'SUM', 'MIN', 'MAX', 'AVG', 'NUNIQUE']
