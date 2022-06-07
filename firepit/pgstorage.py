@@ -31,6 +31,10 @@ RETURNS boolean AS $$
     SELECT convert_from(decode(value, 'base64'), 'UTF8') LIKE pattern;
 $$ LANGUAGE SQL;'''
 
+COLUMNS_TABLE = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__columns" '
+                 '(otype TEXT, path TEXT, shortname TEXT, dtype TEXT,'
+                 ' UNIQUE(otype, path));')
+
 
 def get_storage(url, session_id):
     dbname = url.path.lstrip('/')
@@ -252,12 +256,19 @@ class PgStorage(SqlStorage):
                     '(source_ref TEXT, target_ref TEXT, x_firepit_rank INTEGER,'
                     ' UNIQUE(source_ref, target_ref));')
             self._execute(stmt, cursor)
+            self._execute(COLUMNS_TABLE, cursor)
             self._set_meta(cursor, 'dbversion', DB_VERSION)
             self.connection.commit()
             cursor.close()
         except (psycopg2.errors.DuplicateFunction, psycopg2.errors.UniqueViolation):
             # We probably already created all these, so ignore this
             self.connection.rollback()
+
+    def _migrate(self, version, cursor):
+        if version == '2':
+            self._execute(COLUMNS_TABLE, cursor)
+            return True
+        return False
 
     def _get_writer(self, **kwargs):
         """Get a DB inserter object"""

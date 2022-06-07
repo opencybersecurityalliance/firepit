@@ -18,6 +18,11 @@ from firepit.sqlstorage import validate_name
 logger = logging.getLogger(__name__)
 
 
+COLUMNS_TABLE = ('CREATE TABLE IF NOT EXISTS "__columns" '
+                 '(otype TEXT, path TEXT, shortname TEXT, dtype TEXT,'
+                 ' UNIQUE(otype, path));')
+
+
 def get_storage(path):
     return SQLiteStorage(path)
 
@@ -85,6 +90,12 @@ class SQLiteStorage(SqlStorage):
             cursor.execute('BEGIN;')
             self._initdb(cursor)
         cursor.close()
+
+    def _migrate(self, version, cursor):
+        if version == '2':
+            self._execute(COLUMNS_TABLE, cursor)
+            return True
+        return False
 
     def _get_writer(self, **kwargs):
         """Get a DB inserter object"""
