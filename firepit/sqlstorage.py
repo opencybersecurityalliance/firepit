@@ -37,7 +37,7 @@ from firepit.stix21 import makeid
 from firepit.validate import validate_name
 from firepit.validate import validate_path
 
-DB_VERSION = "2"
+DB_VERSION = "2.1"
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,8 @@ def _transform(filename):
         if 'type' not in obj:
             obj['type'], _, _ = obj['id'].partition('--')
         if obj['type'] != 'identity':
-            for o in (raft.json_normalize(obj, flat_lists=False) for obj in raft.flatten(obj)):
+            for o in (raft.json_normalize(obj, flat_lists=False)
+                      for obj in raft.flatten(obj)):
                 yield o
         else:
             yield obj
@@ -113,6 +114,10 @@ class SqlStorage:
         stmt = ('CREATE TABLE IF NOT EXISTS "__contains" '
                 '(source_ref TEXT, target_ref TEXT, x_firepit_rank,'
                 ' UNIQUE(source_ref, target_ref) ON CONFLICT IGNORE);')
+        self._execute(stmt, cursor)
+        stmt = ('CREATE TABLE IF NOT EXISTS "__columns" '
+                '(otype TEXT, path TEXT, shortname TEXT, dtype TEXT,'
+                ' UNIQUE(otype, path));')
         self._execute(stmt, cursor)
         self._set_meta(cursor, 'dbversion', DB_VERSION)
         self.connection.commit()

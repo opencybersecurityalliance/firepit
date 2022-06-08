@@ -1,7 +1,9 @@
 import pytest
 
 from firepit.props import auto_agg
+from firepit.props import path_metadata
 from firepit.props import primary_prop
+from firepit.props import prop_metadata
 
 
 @pytest.mark.parametrize(
@@ -49,3 +51,29 @@ def test_primary_prop(sco_type, expected):
 def test_auto_agg(sco_type, prop, col_type, expected):
     agg = auto_agg(sco_type, prop, col_type)
     assert agg == expected
+
+
+@pytest.mark.parametrize(
+    'path, dtype, ftype', [
+        ('file:name', 'str', 'categorical'),
+        ('network-traffic:src_ref.value', 'str', 'categorical'),
+        ('x-oca-event:network_ref.dst_byte_count', 'int', 'numerical'),
+    ]
+)
+def test_path_metadata(path, dtype, ftype):
+    data = path_metadata(path)
+    assert data['dtype'] == dtype
+    assert data['ftype'] == ftype
+
+
+@pytest.mark.parametrize(
+    'sco_type, prop, dtype, ftype', [
+        ('file',  'name', 'str', 'categorical'),
+        ('network-traffic', 'src_ref.value', 'str', 'categorical'),
+        ('x-oca-event', 'network_ref.dst_byte_count', 'int', 'numerical'),
+    ]
+)
+def test_prop_metadata(sco_type, prop, dtype, ftype):
+    data = prop_metadata(sco_type, prop)
+    assert data['dtype'] == dtype
+    assert data['ftype'] == ftype

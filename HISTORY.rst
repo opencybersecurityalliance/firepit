@@ -2,6 +2,16 @@
 History
 =======
 
+2.2.0 (2022-06-08)
+------------------
+
+- Better STIX extension property support
+  - Add a new `__columns` "private" table to store mapping from object path to column name
+  - New path/prop metadata functions to supply metadata about STIX properties
+- Improved STIX ``process`` "deterministic" ``id`` generation
+  - Use a unique ID from extension properties, if found
+  - Use related ``x-oca-asset`` hostname or ID if available
+
 2.1.0 (2022-05-18)
 ------------------
 

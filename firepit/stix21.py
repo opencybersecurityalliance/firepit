@@ -30,6 +30,22 @@ ID_PROPS = {
     'x509-certificate': ('hashes', 'serial_number'),
 }
 
+PROCESS_UNIQUE_ID_PROPS = [
+    'process_id', # reaqta (older version)
+    'process_uid', # reaqta (newer)
+    'process_unique_id', # sentinelone
+    'process_guid', # just in case
+]
+
+
+def _get_asset_id(obs):
+    """Find the first x-oca-asset and return ID or hostname"""
+    for _, sco in obs.get('objects', {}).items():
+        if sco['type'] == 'x-oca-asset':
+            for prop in ('host_id', 'hostname'):
+                if prop in sco:
+                    return sco[prop]
+
 
 def makeid(sco, obs=None):
     sco_type = sco['type']
@@ -58,6 +74,25 @@ def makeid(sco, obs=None):
                     contrib[prop] = value
             else:
                 contrib[prop] = value
+
+    if sco_type == 'process':
+        unique_id = None
+        for _, ext in sco.get('extensions', {}).items():
+            for prop in PROCESS_UNIQUE_ID_PROPS:
+                unique_id = ext.get(prop)
+                if unique_id:
+                    contrib['x_unique_id'] = unique_id
+                    break
+            if unique_id:
+                break
+        else:  # Still don't have unique_id
+            if obs:
+                # Try to use other SCOs
+                pid = sco.get('pid')
+                asset = _get_asset_id(obs)
+                if pid and asset and obs:
+                    ts = obs['last_observed']
+                    contrib['x_unique_id'] = f'{pid}_{asset}_{ts}'
 
     if contrib:
         name = ujson.dumps(contrib, sort_keys=True, ensure_ascii=False)

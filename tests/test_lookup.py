@@ -52,5 +52,5 @@ def test_lookup_procs(ccoe_bundle, tmpdir):
 
     store.extract('procs', 'process', 'q1', "[process:pid > 0]")
     procs = store.lookup('procs')
-    assert len(procs) == 1021
+    assert len(procs) == 563  # 1021
     assert 'parent_ref.pid' in procs[0]

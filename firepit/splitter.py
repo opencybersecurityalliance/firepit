@@ -1,4 +1,5 @@
 import logging
+import re
 import os
 from collections import OrderedDict, defaultdict
 
@@ -12,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 def _strip_prefix(s, prefix):
     return s[len(prefix):] if s.startswith(prefix) else s
+
+
+def shorten_extension_name(key):
+    return re.sub(r"^extensions\.'(x-)?([\w\d_-]+)'\.", "x_", key)
 
 
 class JsonWriter:
@@ -71,15 +76,32 @@ class SqlWriter:
     def __init__(self, filedir, store, prefix='',
                  placeholder='?',
                  infer_type=None,
+                 shorten=None,
                  **kwargs):
-        self.filedir = filedir
+        self.filedir = filedir  # Unused?
+
+        # Reference to actual SqlStorage object
         self.store = store
+
+        # Prefix is no longer used.  Should probably remove this.
+        # Could be useful for PostgreSQL "schemas" though
         if prefix and not prefix.endswith('_'):
             self.prefix = prefix + '_'
         else:
             self.prefix = prefix
+
+        # Python DBAPI SQL value placeholder (database-specific)
         self.placeholder = placeholder
+
+        # SQL data type inference function (database-specific)
         self.infer_type = infer_type
+
+        # SQL column name function (database-specific)
+        if shorten:
+            self.shorten = shorten
+        else:
+            self.shorten = shorten_extension_name
+
         self.schemas = defaultdict(OrderedDict)
         self.kwargs = kwargs
 
@@ -90,10 +112,12 @@ class SqlWriter:
         colnames = schema.keys()
         valnames = ', '.join([f'"{x}"' for x in colnames])
         placeholders = ', '.join([self.placeholder] * len(obj))
-        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders}) ON CONFLICT (id) DO '
-        valnames = [f'"{col}" = EXCLUDED."{col}"' for col in colnames if col != 'id']
-        valnames = ', '.join(valnames)
-        stmt += f'UPDATE SET {valnames};'
+        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
+        if 'id' in colnames:
+            stmt += ' ON CONFLICT (id) DO '
+            valnames = [f'"{col}" = EXCLUDED."{col}"' for col in colnames if col != 'id']
+            valnames = ', '.join(valnames)
+            stmt += f'UPDATE SET {valnames};'
         tmp = [ujson.dumps(value, ensure_ascii=False)
                if isinstance(value, list) else value for value in obj]
         values = tuple(tmp)
@@ -202,19 +226,28 @@ class SplitWriter:
         add_col = False
         new_columns = {}
         if not schema:
+            # Found new table
             schema = {}
             add_table = True
         new_obj = {}
         for key, value in obj.items():
-            if len(key) > 63 or key in ['type', 'spec_version']:
+            if key in ['type', 'spec_version']:
                 continue
-            new_obj[key] = value
-            if key not in schema:
+            # shorten key (STIX prop) to make column names more manageable
+            shortname = self.writer.shorten(key)  # Need to detect collisions!
+            new_obj[shortname] = value
+            if shortname not in schema:
+                # Found new column
                 if not add_table:
                     add_col = True
+                self.write({'type': '__columns',
+                            'otype': obj_type,
+                            'path': key,
+                            'shortname': shortname,
+                            'dtype': value.__class__.__name__})
                 col_type = self.writer.infer_type(key, value)
-                schema[key] = col_type
-                new_columns[key] = col_type
+                schema[shortname] = col_type
+                new_columns[shortname] = col_type
         obj = new_obj
         if add_table:
             self.schemas[obj_type] = schema

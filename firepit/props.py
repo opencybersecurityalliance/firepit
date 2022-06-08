@@ -3,6 +3,351 @@
 import re
 
 
+# This is a subset of known STIX objects and properties.
+# Ideally we would "learn" all this while ingesting data
+#
+# dtype: Python data type
+# ftype: "feature" type, as in ML feature
+#        one of timestamp, numerical, or categorical (really "other")
+#
+# Maybe we only need entries if dtype IS NOT str?
+# dtype == 'str' -> 'ftype' == 'categorical'
+KNOWN_PROPS = {
+    'artifact': {
+        'payload_bin': {
+            'dtype': 'str',
+        },
+    },
+    'autonomous-system': {
+        'number': {
+            'dtype': 'int',
+            'ftype': 'categorical',
+        },
+        'name': {
+            'dtype': 'str',
+        },
+        'rir': {
+            'dtype': 'str',
+        },
+    },
+    'directory': {
+        'accessed': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'created': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'modified': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'atime': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'ctime': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'mtime': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'path': {
+            'dtype': 'str',
+        },
+    },
+    'domain-name': {
+        'value': {
+            'dtype': 'str',
+        },
+    },
+    'email-addr': {
+        'value': {
+            'dtype': 'str',
+        },
+    },
+    'email-message': {
+        'is_multipart': {
+            'dtype': 'bool',
+        },
+        'date': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'message_id': {
+            'dtype': 'str',
+        },
+    },
+    'file': {
+        'accessed': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'created': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'modified': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'atime': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'ctime': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'mtime': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'name': {
+            'dtype': 'str',
+        },
+        #TODO? 'hashes': {
+    },
+    'ipv4-addr': {
+        'value': {
+            'dtype': 'str',
+        },
+    },
+    'ipv6-addr': {
+        'value': {
+            'dtype': 'str',
+        },
+    },
+    'mac-addr': {
+        'value': {
+            'dtype': 'str',
+        },
+    },
+    'mutex': {
+        'value': {
+            'dtype': 'str',
+        },
+    },
+    'network-traffic': {
+        'protocols': {
+            'dtype': 'list',
+        },
+        'dst_port': {
+            'dtype': 'int',
+            'ftype': 'categorical',
+        },
+        'src_port': {
+            'dtype': 'int',
+            'ftype': 'categorical',
+        },
+        'dst_byte_count': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+        'src_byte_count': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+        'src_packets': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+        'dst_packets': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+        'ipfix.flowId': {  # Standard extension-like
+            'dtype': 'str',
+        },
+        'ipfix.maximumIpTotalLength': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+        'ipfix.minimumIpTotalLength': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+        'start': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'end': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+    },
+    'process': {
+        'created': {  # STIX 2.0
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'created_time': {  # STIX 2.1
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+    },
+    'software': {
+    },
+    'url': {
+        'value': {
+            'dtype': 'str',
+        },
+    },
+    'user-account': {
+        'user_id': {
+            'dtype': 'str',
+        },
+        'account_login': {
+            'dtype': 'str',
+        },
+        'account_created': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'account_expires': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'credential_last_changed': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'account_first_login': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'account_last_login': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+    },
+    'windows-registry-key': {
+        'modified': {  # STIX 2.0
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'modified_time': {  # STIX 2.1
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+    },
+    'x509-certificate': {
+        'validity_not_after': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'validity_not_before': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+    },
+    'x-ibm-finding': {
+        'time_observed': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'start': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'end': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'rule_trigger_count': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+        'severity': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+        'event_count': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+    },
+    'x-oca-asset': {
+    },
+    'x-oca-event': {
+        'created': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'start': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'end': {
+            'dtype': 'str',
+            'ftype': 'timestamp',
+        },
+        'code': {
+            'dtype': 'int',
+            'ftype': 'categorical',
+        },
+        'duration': {
+            'dtype': 'int',
+            'ftype': 'numerical',
+        },
+    },
+
+    # SDOs
+    'observed-data': {
+        'first_observed': {
+            'dtype': 'str',
+            'ftype': 'timestamp'
+        },
+        'last_observed': {
+            'dtype': 'str',
+            'ftype': 'timestamp'
+        },
+        'number_observed': {
+            'dtype': 'int',
+            'ftype': 'numerical'
+        },
+    },
+}
+
+
+LIKELY_TIMESTAMPS = {
+    prop
+    for sco_type, props in KNOWN_PROPS.items()
+    for prop, metadata in props.items()
+    if metadata.get("ftype") == "timestamp"
+}
+
+
+def path_metadata(path):
+    """Get metadata for a STIX object path"""
+    sco_type, _, prop = path.rpartition(':')
+    return prop_metadata(sco_type, prop)
+
+
+def prop_metadata(sco_type, prop):
+    """Get metadata for a STIX object property"""
+    meta = KNOWN_PROPS.get(sco_type, {}).get(prop)
+    if not meta:
+        links = parse_prop(sco_type, prop)  # Maybe just do this first?
+        _, ref_type, ref_prop = links[-1]
+        meta = KNOWN_PROPS.get(ref_type, {}).get(ref_prop, {})
+    if 'dtype' not in meta:
+        meta['dtype'] = 'str'
+    if 'ftype' not in meta:
+        # Heuristic based on name
+        if (prop.endswith('time') or prop.startswith('time') or
+            prop in LIKELY_TIMESTAMPS):
+            meta['ftype'] = 'timestamp'
+        elif prop.endswith('count') or prop.startswith('count'):
+            meta['ftype'] = 'numerical'
+        else:
+            meta['ftype'] = 'categorical'
+    return meta
+
+
 # A regex to grab the last piece of a STIX path
 last_re = re.compile(r'.*[\.:]([a-z]*)')
 
