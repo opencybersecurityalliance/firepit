@@ -168,6 +168,7 @@ class PgStorage(SqlStorage):
     def __init__(self, dbname, url, session_id=None):
         super().__init__()
         self.placeholder = '%s'
+        self.dialect = 'postgresql'
         self.text_min = 'LEAST'
         self.text_max = 'GREATEST'
         self.ifnull = 'COALESCE'

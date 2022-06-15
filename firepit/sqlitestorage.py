@@ -50,6 +50,7 @@ def _match_bin(pattern, value):
         return bool(re.search(pattern, val, re.DOTALL))
     return False
 
+
 def _like_bin(pattern, value):
     """User-defined function to implement SQL/STIX LIKE for binaries"""
     if value is not None:

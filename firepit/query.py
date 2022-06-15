@@ -61,6 +61,12 @@ def _quote(obj):
     return str(obj)
 
 
+def _alias(obj):
+    if hasattr(obj, 'alias') and obj.alias:
+        return _quote(obj.alias)
+    return _quote(obj)
+
+
 class Column:
     """SQL Column name"""
 
@@ -101,6 +107,54 @@ class CoalescedColumn:
         result = ', '.join(self.names)
         result = f'COALESCE({result}) AS "{self.alias}"'
         return result
+
+
+class BinnedColumn(Column):
+    """Bin (or "bucket") column values, persumably for easier grouping"""
+
+    def __init__(self,
+                 prop: str,
+                 n: int,
+                 unit: str = None,
+                 table: str = None,
+                 alias: str = None
+    ):
+        super().__init__(prop, table, alias)
+        self.n = n
+        self.unit = unit.lower() if unit else ''
+
+    def render(self, _placeholder, dialect=None):
+        if self.table:
+            col = f'"{self.table}".{_quote(self.name)}'
+        else:
+            col = _quote(self.name)
+        if self.alias:
+            alias = self.alias
+        else:
+            alias = self.name
+        if self.unit in ("days", "d"):
+            secs = 86400  # seconds per day
+        elif self.unit in ("hours", "h"):
+            secs = 3600   # seconds per hour
+        elif self.unit in ("minutes", "m"):
+            secs = 60     # seconds per minute
+        elif self.unit in ("seconds", "s"):
+            secs = 1      # seconds per second
+        else:
+            secs = None  # i.e. not a timestamp
+        if secs:
+            # Must be a timestamp
+            bin_size = self.n * secs
+            if dialect == 'postgresql':
+                # PostgreSQL
+                dt = f'to_timestamp((FLOOR(EXTRACT(epoch from {col}::timestamp)/{bin_size})*{bin_size}))'
+                return f'to_char({dt}, \'yyyy-MM-dd"T"HH24:MI:SS"Z"\') AS "{alias}"'
+            # sqlite3
+            dt = f"datetime(strftime('%s', {col})/{bin_size}*{bin_size}, 'unixepoch')"
+            return f'strftime(\'%Y-%m-%dT%H:%M:%SZ\', {dt}) AS "{alias}"'
+        # else we assume it's some numeric column
+        bin_size = self.n
+        return f'{col}/{bin_size}*{bin_size} AS "{alias}"'
 
 
 class Predicate:
@@ -149,7 +203,7 @@ class Predicate:
         self.op = op
         self.rhs = rhs
 
-    def render(self, placeholder):
+    def render(self, placeholder, _dialect=None):
         if isinstance(self.lhs, Predicate):
             text = self.lhs.render(placeholder)
             text += f' {self.op} '
@@ -208,7 +262,7 @@ class Filter:
         for pred in self.preds:
             self.values += pred.values
 
-    def render(self, placeholder):
+    def render(self, placeholder, _dialect=None):
         pred_list = []
         for pred in self.preds:
             pred_list.append(pred.render(placeholder))
@@ -238,10 +292,10 @@ class Order:
                 validate_path(col[0])
             self.cols.append(col)
 
-    def render(self, placeholder):
+    def render(self, _placeholder, _dialect=None):
         col_list = []
         for col in self.cols:
-            col_list.append(f'{_quote(col[0])} {col[1]}')
+            col_list.append(f'{_alias(col[0])} {col[1]}')
         return ', '.join(col_list)
 
 
@@ -252,8 +306,10 @@ class Projection:
             _validate_column(col)
         self.cols = cols
 
-    def render(self, placeholder):
-        return ', '.join([_quote(col) for col in self.cols])
+    def render(self, placeholder, dialect=None):
+        cols = [col.render(placeholder, dialect) if hasattr(col, 'render') else _quote(col)
+                for col in self.cols]  # Dumb hack to get db-specific fetures
+        return ', '.join(cols)
 
 
 class Table:
@@ -263,7 +319,7 @@ class Table:
         validate_name(name)
         self.name = name
 
-    def render(self, placeholder):
+    def render(self, _placeholder, _dialect=None):
         return self.name
 
 
@@ -275,11 +331,17 @@ class Group:
             _validate_column(col)
         self.cols = cols
 
-    def render(self, placeholder):
+    def render(self, _placeholder, _dialect=None):
         cols = []
         for col in self.cols:
-            if isinstance(col, Column):  # Again, nasty hacks
-                if col.table:
+            if hasattr(col, 'alias') and col.alias: # Ugly, ugly hack
+                # Can only define a new column in Projection
+                # So here we just use the alias
+                cols.append(col.alias)
+            elif isinstance(col, Column):  # Again, nasty hacks
+                if col.alias:
+                    cols.append(col.alias)
+                elif col.table:
                     cols.append(f'{col.table}"."{col.name}')
                 else:
                     cols.append(col.name)
@@ -309,7 +371,7 @@ class Aggregation:
                 raise TypeError('expected aggregation tuple but received ' + str(type(agg)))
         self.group_cols = []  # Filled in by Query
 
-    def render(self, placeholder):
+    def render(self, _placeholder, _dialect=None):
         exprs = [_quote(col) for col in self.group_cols]
         for agg in self.aggs:
             mod = ''
@@ -336,7 +398,7 @@ class Offset:
     def __init__(self, num):
         self.num = int(num)
 
-    def render(self, placeholder):
+    def render(self, _placeholder, _dialect=None):
         return str(self.num)
 
 
@@ -346,7 +408,7 @@ class Limit:
     def __init__(self, num):
         self.num = int(num)
 
-    def render(self, placeholder):
+    def render(self, _placeholder, _dialect=None):
         return str(self.num)
 
 
@@ -356,7 +418,7 @@ class Count:
     def __init__(self):
         pass
 
-    def render(self, placeholder):
+    def render(self, _placeholder, _dialect=None):
         return 'COUNT(*) AS "count"'
 
 
@@ -366,7 +428,7 @@ class Unique:
     def __init__(self):
         pass
 
-    def render(self, placeholder):
+    def render(self, placeholder, dialect=None):
         return 'SELECT DISTINCT *'
 
 
@@ -378,7 +440,7 @@ class CountUnique:
             _validate_column(col)
         self.cols = cols
 
-    def render(self, placeholder):
+    def render(self, _placeholder, _dialect=None):
         if self.cols:
             cols = ', '.join([f'"{col}"' for col in self.cols])
             return f'COUNT(DISTINCT {cols}) AS "count"'
@@ -431,7 +493,7 @@ class Join:
             self.how == rhs.how and
             self.alias == rhs.alias)
 
-    def render(self, placeholder):
+    def render(self, placeholder, _dialect=None):
         # Assume there's a FROM before this?
         target = f'"{self.name}"'
         table = target
@@ -503,9 +565,6 @@ class Query:
         elif isinstance(stage, Group):
             self.groupby = stage
         elif isinstance(stage, Aggregation):
-            # If there's already a Projection, that's an error
-            if self.proj:
-                raise InvalidQuery('cannot have Aggregation after Projection')
             self.aggs = stage
         elif isinstance(stage, Projection):
             self.proj = stage
@@ -531,7 +590,7 @@ class Query:
         for stage in stages:
             self.append(stage)
 
-    def render(self, placeholder):
+    def render(self, placeholder, dialect=None):
         if not self.table:
             raise InvalidQuery("no table")  #TODO: better message
         result_cols = ''
@@ -559,7 +618,7 @@ class Query:
             where = ' AND '.join(filts)
             query = f'{query} WHERE {where}'
         if self.groupby:
-            text = self.groupby.render(placeholder)
+            text = self.groupby.render(placeholder, dialect)
             query = f'{query} GROUP BY {text}'
             # Add group cols to result set automatically
             if result_cols:
@@ -574,14 +633,14 @@ class Query:
             query = f'{query} HAVING {where}'
 
         # Projection and Aggregation both add columns to result set
+        if self.proj:
+            if result_cols:
+                result_cols += ', '
+            result_cols = self.proj.render(placeholder, dialect)
         if self.aggs:
             if result_cols:
                 result_cols += ', '
             result_cols += self.aggs.render(placeholder)
-        if self.proj:
-            if result_cols:
-                result_cols += ', '
-            result_cols = self.proj.render(placeholder)
         if not result_cols:
             result_cols = '*'
 
