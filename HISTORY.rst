@@ -2,6 +2,11 @@
 History
 =======
 
+2.3.0 (2022-06-15)
+------------------
+
+- Added query.BinnedColumn so you can group by time buckets
+
 2.2.0 (2022-06-08)
 ------------------
 
