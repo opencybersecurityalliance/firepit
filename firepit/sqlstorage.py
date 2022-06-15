@@ -21,6 +21,7 @@ from firepit.props import parse_prop
 from firepit.props import primary_prop
 from firepit.query import Aggregation
 from firepit.query import Column
+from firepit.query import BinnedColumn
 from firepit.query import Filter
 from firepit.query import Group
 from firepit.query import Join
@@ -77,6 +78,7 @@ class SqlStorage:
     def __init__(self):
         self.connection = None  # Python DB API connection object
         self.placeholder = '%s'  # Derived class can override this
+        self.dialect = None      # Derived class can override this
 
         # Functions to use for min/max text.  It can vary - sqlite3
         # uses MIN/MAX, postgresql uses LEAST/GREATEST
@@ -714,7 +716,7 @@ class SqlStorage:
         return res
 
     def run_query(self, query):
-        query_text, query_values = query.render(self.placeholder)
+        query_text, query_values = query.render(self.placeholder, self.dialect)
         return self._query(query_text, query_values)
 
     def merge(self, viewname, input_views):
@@ -803,7 +805,7 @@ class SqlStorage:
             agg = Aggregation(aggs)
             query.aggs = agg
 
-        query_text, query_values = query.render('{}')
+        query_text, query_values = query.render('{}', self.dialect)
         formatted_values = [f"'{v}'" if isinstance(v, str) else v for v in query_values]
         stmt = query_text.format(*formatted_values)
         logger.debug('assign_query: %s', stmt)
@@ -969,14 +971,18 @@ class SqlStorage:
 
     def group(self, newname, viewname, by, aggs=None):
         """Create new view `newname` defined by grouping `viewname` by `by`"""
-        if isinstance(by, str):
+        if not isinstance(by, list):
             by = [by]
         columns = self.columns(viewname)
         group_colnames = []
         joined = set()
+        proj = []
         qry = Query(viewname)
         for col in by:
-            if col not in columns:
+            if isinstance(col, BinnedColumn):
+                proj.append(col)
+                group_colnames.append(col)
+            elif col not in columns:
                 joins, table, colname = self.path_joins(viewname, None, col)
                 group_colnames.append(Column(colname, table, col))
                 if table not in joined:
@@ -1007,6 +1013,9 @@ class SqlStorage:
                 else:
                     tmp.append(agg)
             aggs = tmp
+        if proj:
+            qry.append(Projection(proj))
         qry.append(Group(group_colnames))
         qry.append(Aggregation(aggs))
+        qry.append(Order(group_colnames))
         self.assign_query(newname, qry)
