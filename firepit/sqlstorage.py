@@ -155,7 +155,7 @@ class SqlStorage:
 
     def _drop_name(self, cursor, name):
         stmt = f'DELETE FROM "__symtable" WHERE name = {self.placeholder};'
-        cursor.execute(stmt, (name,))
+        self._query(stmt, (name,), cursor)  # This commits
 
     def _execute(self, statement, cursor=None):
         """Private wrapper for logging SQL statements"""
@@ -755,14 +755,10 @@ class SqlStorage:
         cursor = self._execute('BEGIN;')
 
         # Need to remove `newname` if it already exists
-        self._execute(f'DROP VIEW IF EXISTS "{newname}";', cursor)
         self._drop_name(cursor, newname)
 
         # Now do the rename
-        qry = re.sub(f'var = \'{oldname}\'',  # This is an ugly hack
-                     f'var = \'{newname}\'',
-                     view_def)
-        self._create_view(newname, qry, view_type, cursor=cursor)
+        self._create_view(newname, view_def, view_type, cursor=cursor)
         self._execute(f'DROP VIEW IF EXISTS "{oldname}"', cursor)
         self._drop_name(cursor, oldname)
         self._new_name(cursor, newname, view_type)
