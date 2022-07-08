@@ -11,6 +11,7 @@ from firepit.exceptions import InvalidAttr
 from firepit.exceptions import UnexpectedError
 from firepit.exceptions import UnknownViewname
 from firepit.splitter import SqlWriter
+from firepit.sqlstorage import DB_VERSION
 from firepit.sqlstorage import SqlStorage
 from firepit.sqlstorage import infer_type
 from firepit.sqlstorage import validate_name
@@ -95,8 +96,30 @@ class SQLiteStorage(SqlStorage):
     def _migrate(self, version, cursor):
         if version == '2':
             self._execute(COLUMNS_TABLE, cursor)
-            return True
-        return False
+            version = '2.1'
+        if version == '2.1':
+            # Add unique contraint to __symtable
+            # First de-dup the table
+            data = self.get_view_data()
+            views = {}
+            for row in data:
+                print(row)
+                views[row['name']] = row
+            cursor = self._execute('BEGIN;')
+            self._execute('DROP TABLE __symtable', cursor)
+            stmt = ('CREATE TABLE IF NOT EXISTS "__symtable" '
+                    '(name TEXT, type TEXT, appdata TEXT,'
+                    ' UNIQUE(name));')
+            self._execute(stmt, cursor)
+            for view in views.values():
+                print(view)
+                stmt = (f'INSERT INTO "__symtable" (name, type, appdata)'
+                        f' VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder})')
+                cursor.execute(stmt, (view['name'], view['type'], view['appdata']))
+            self.connection.commit()
+            cursor.close()
+            version = '2.2'
+        return version == DB_VERSION
 
     def _get_writer(self, **kwargs):
         """Get a DB inserter object"""

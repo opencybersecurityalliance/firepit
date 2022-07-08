@@ -38,7 +38,7 @@ from firepit.stix21 import makeid
 from firepit.validate import validate_name
 from firepit.validate import validate_path
 
-DB_VERSION = "2.1"
+DB_VERSION = "2.2"
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,8 @@ class SqlStorage:
                 '(name TEXT, value TEXT);')
         self._execute(stmt, cursor)
         stmt = ('CREATE TABLE IF NOT EXISTS "__symtable" '
-                '(name TEXT, type TEXT, appdata TEXT);')
+                '(name TEXT, type TEXT, appdata TEXT,'
+                ' UNIQUE(name));')
         self._execute(stmt, cursor)
         stmt = ('CREATE TABLE IF NOT EXISTS "__queries" '
                 '(sco_id TEXT, query_id TEXT);')
@@ -150,12 +151,13 @@ class SqlStorage:
 
     def _new_name(self, cursor, name, sco_type):
         stmt = ('INSERT INTO "__symtable" (name, type)'
-                f' VALUES ({self.placeholder}, {self.placeholder});')
+                f' VALUES ({self.placeholder}, {self.placeholder})'
+                ' ON CONFLICT (name) DO UPDATE SET type = EXCLUDED.type')
         cursor.execute(stmt, (name, sco_type))
 
     def _drop_name(self, cursor, name):
         stmt = f'DELETE FROM "__symtable" WHERE name = {self.placeholder};'
-        self._query(stmt, (name,), cursor)  # This commits
+        cursor.execute(stmt, (name,))
 
     def _execute(self, statement, cursor=None):
         """Private wrapper for logging SQL statements"""
@@ -499,8 +501,6 @@ class SqlStorage:
             splitter.close()
             viewdef = self._get_view_def(viewname)
             self._recreate_view(viewname, viewdef, cursor)
-
-
         self.connection.commit()
 
     def join(self, viewname, l_var, l_on, r_var, r_on):
