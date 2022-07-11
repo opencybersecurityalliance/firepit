@@ -515,7 +515,7 @@ class PgStorage(SqlStorage):
                 if excluded:
                     action = f'UPDATE SET {excluded}'
             stmt += f' ON CONFLICT (id) DO {action}'
-        elif tablename == '__contains':
+        else:
             stmt += ' ON CONFLICT DO NOTHING'
         values = []
         query_values = []
@@ -556,7 +556,7 @@ class PgStorage(SqlStorage):
                 if excluded:
                     action = f'UPDATE SET {excluded}'
             stmt += f'  ON CONFLICT (id) DO {action}'
-        elif tablename == '__contains':
+        else:
             stmt += ' ON CONFLICT DO NOTHING'
         cursor.execute(stmt)
 
