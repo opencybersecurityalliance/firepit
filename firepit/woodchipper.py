@@ -88,10 +88,10 @@ def format_val(sco_type, prop, val):
     elif prop == 'protocols':  # HACKY
         result = [val]
     elif prop == 'key':
+        result = val
         for abbrev, full in REG_HIVE_MAP.items():
             if val.startswith(abbrev):
                 result = val.replace(abbrev, full, 1)
-        result = val
     elif sco_type == 'ipv4-addr' and prop == 'value':
         # DNS QueryResults have ; at the end of addr?
         result = val.strip(';')  # TODO: need to check for multiple addrs?
@@ -428,7 +428,7 @@ windows_mapping = {
         "ProcessGuid": "process:x_unique_id",
     },
     7: {
-        "UtcTime": ["first_observed", "last_observed", "process:created"],
+        "UtcTime": ["first_observed", "last_observed"],
         "Image": split_image,
         "ImageLoaded": split_image_loaded,
         "ProcessId": "process:pid",
@@ -565,6 +565,7 @@ class SdsMapper(Mapper):
         #"Message": to_payload_bin,
         "ProcessName": split_image,  # At least some events use this instead of Image
         "ProcessId": "process:pid",
+        "ProcessGuid": "process:x_unique_id",
         "Application": split_image,  # At least some events use this instead of Image
     }
 
@@ -825,7 +826,7 @@ def detect_filetype(input_file):
     return read_func
 
 
-def convert(input_file):
+def convert_to_stix(input_file):
     now = timefmt(datetime.datetime.utcnow())
     id1 = OrderedDict({
         "type": "identity",
@@ -848,6 +849,7 @@ def convert(input_file):
     bundle = {
         'type': 'bundle',
         'id': 'bundle--' + str(uuid.uuid4()),
+        'spec_version': '2.0',  # TODO: If 2.1, omit this property
         'objects': []
     }
     objects = [id1]
@@ -873,7 +875,17 @@ def convert(input_file):
         raise e
 
     bundle['objects'] = objects
-    print(json.dumps(bundle, indent=4, ensure_ascii=False))
+
+    return bundle
+
+
+def convert(input_file, output_file=None):
+    bundle = convert_to_stix(input_file)
+    if output_file:
+        with open(output_file, 'w') as fp:
+            json.dump(bundle, fp, indent=4, ensure_ascii=False)
+    else:
+        print(json.dumps(bundle, indent=4, ensure_ascii=False))
 
 
 if __name__ == '__main__':

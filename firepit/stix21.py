@@ -75,7 +75,7 @@ def makeid(sco, obs=None):
             else:
                 contrib[prop] = value
 
-    if sco_type == 'process':
+    if sco_type == 'process' and 'x_unique_id' not in contrib:
         unique_id = None
         for _, ext in sco.get('extensions', {}).items():
             for prop in PROCESS_UNIQUE_ID_PROPS:
