@@ -550,6 +550,7 @@ class PgStorage(SqlStorage):
         stmt = (f'INSERT INTO "{tablename}" ({valnames})'
                 f' SELECT {valnames} FROM tmp')
         if 'id' in colnames:
+            stmt += ' ORDER BY id'  # Avoid deadlocks
             action = 'NOTHING'
             if tablename != 'identity':
                 excluded = self._get_excluded(colnames, tablename)
