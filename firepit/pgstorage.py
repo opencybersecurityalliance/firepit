@@ -21,6 +21,13 @@ from firepit.sqlstorage import validate_name
 logger = logging.getLogger(__name__)
 
 
+CHECK_FOR_QUERIES_TABLE = (
+    "SELECT (EXISTS (SELECT *"
+    " FROM INFORMATION_SCHEMA.TABLES"
+    " WHERE TABLE_SCHEMA = %s"
+    " AND  TABLE_NAME = '__queries'))"
+)
+
 MATCH_BIN = '''CREATE FUNCTION firepit_common.match_bin(pattern TEXT, value TEXT)
 RETURNS boolean AS $$
     SELECT regexp_match(convert_from(decode(value, 'base64'), 'UTF8'), pattern) IS NOT NULL;
@@ -31,9 +38,52 @@ RETURNS boolean AS $$
     SELECT convert_from(decode(value, 'base64'), 'UTF8') LIKE pattern;
 $$ LANGUAGE SQL;'''
 
+METADATA_TABLE = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__metadata" '
+                  '(name TEXT, value TEXT)')
+
+SYMTABLE = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
+            '(name TEXT, type TEXT, appdata TEXT,'
+            ' UNIQUE(name))')
+
+QUERIES_TABLE = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__queries" '
+                 '(sco_id TEXT, query_id TEXT)')
+
+CONTAINS_TABLE = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__contains" '
+                  '(source_ref TEXT, target_ref TEXT, x_firepit_rank INTEGER,'
+                  ' UNIQUE(source_ref, target_ref));')
+
 COLUMNS_TABLE = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__columns" '
                  '(otype TEXT, path TEXT, shortname TEXT, dtype TEXT,'
                  ' UNIQUE(otype, path));')
+
+# Bootstrap some common SDO tables
+ID_TABLE = ('CREATE UNLOGGED TABLE "identity" ('
+            ' "id" TEXT UNIQUE,'
+            ' "identity_class" TEXT,'
+            ' "name" TEXT,'
+            ' "created" TEXT,'
+            ' "modified" TEXT'
+            ')')
+
+OD_TABLE = ('CREATE UNLOGGED TABLE "observed-data" ('
+            ' "id" TEXT UNIQUE,'
+            ' "created_by_ref" TEXT,'
+            ' "created" TEXT,'
+            ' "modified" TEXT,'
+            ' "first_observed" TEXT,'
+            ' "last_observed" TEXT,'
+            ' "number_observed" BIGINT'
+            ')')
+
+INTERNAL_TABLES = [
+    METADATA_TABLE,
+    SYMTABLE,
+    QUERIES_TABLE,
+    CONTAINS_TABLE,
+    COLUMNS_TABLE,
+    ID_TABLE,
+    OD_TABLE,
+]
 
 
 def get_storage(url, session_id):
@@ -195,11 +245,7 @@ class PgStorage(SqlStorage):
 
         self._execute(f'SET search_path TO "{session_id}", firepit_common;')
 
-        stmt = ("SELECT (EXISTS (SELECT *"
-                " FROM INFORMATION_SCHEMA.TABLES"
-                " WHERE TABLE_SCHEMA = %s"
-                " AND  TABLE_NAME = '__queries'))")
-        res = self._query(stmt, (session_id,)).fetchone()
+        res = self._query(CHECK_FOR_QUERIES_TABLE, (session_id,)).fetchone()
         done = list(res.values())[0] if res else False
         if not done:
             self._setup()
@@ -244,22 +290,12 @@ class PgStorage(SqlStorage):
         cursor = self._execute('BEGIN;')
         try:
             # Do DB initization from base class
-            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__metadata" '
-                    '(name TEXT, value TEXT);')
-            self._execute(stmt, cursor)
-            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__symtable" '
-                    '(name TEXT, type TEXT, appdata TEXT,'
-                    ' UNIQUE(name));')
-            self._execute(stmt, cursor)
-            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__queries" '
-                    '(sco_id TEXT, query_id TEXT);')
-            self._execute(stmt, cursor)
-            stmt = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__contains" '
-                    '(source_ref TEXT, target_ref TEXT, x_firepit_rank INTEGER,'
-                    ' UNIQUE(source_ref, target_ref));')
-            self._execute(stmt, cursor)
-            self._execute(COLUMNS_TABLE, cursor)
+            for stmt in INTERNAL_TABLES:
+                self._execute(stmt, cursor)
+
+            # Record db version
             self._set_meta(cursor, 'dbversion', DB_VERSION)
+
             self.connection.commit()
             cursor.close()
         except (psycopg2.errors.DuplicateFunction, psycopg2.errors.UniqueViolation):
