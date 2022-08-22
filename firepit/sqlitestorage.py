@@ -40,8 +40,9 @@ def _in_subnet(value, net):
 
 def _match(pattern, value):
     """User-defined function to implement SQL MATCH/STIX MATCHES"""
+    exp = pattern.replace('\\\\', '\\')
     return (value is not None and
-            bool(re.search(pattern, value, re.DOTALL)))
+            bool(re.search(exp, value, re.DOTALL)))
 
 
 def _match_bin(pattern, value):
