@@ -74,6 +74,42 @@ def infer_type(key, value):
     return rtype
 
 
+def get_path_joins(viewname, sco_type, column):
+    """Determine if `column` has implicit Joins and return them if so"""
+    aliases = {sco_type: viewname}
+    links = parse_path(column) if ':' in column else parse_prop(sco_type, column)
+    target_table = None
+    target_column = None
+    results = []  # Query components to return
+    for link in links:
+        if link[0] == 'node':
+            if not target_table:
+                target_table = link[1] or viewname
+            if not target_column:
+                target_column = link[2]
+            else:
+                target_column += f'.{link[2]}'
+        elif link[0] == 'rel':
+            from_type = link[1] or viewname
+            ref_name = link[2]
+            if target_column:
+                target_column = None
+            to_type = link[3]
+            target_table = to_type
+            lhs = aliases.get(from_type, from_type)
+            alias, _, _ = ref_name.rpartition('_')
+            aliases[to_type] = alias
+            if ref_name.endswith('_refs'):
+                # Handle reflist
+                # TODO: need to add ref_name to Join condition?
+                results.append(Join('__reflist', 'id', '=', 'source_ref', lhs=lhs, alias='r'))
+                results.append(Join(to_type, 'target_ref', '=', 'id', lhs='r', alias=alias))
+            else:
+                results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
+        target_table = aliases.get(target_table, target_table)
+    return results, target_table, target_column
+
+
 class SqlStorage:
     def __init__(self):
         self.connection = None  # Python DB API connection object
@@ -269,38 +305,7 @@ class SqlStorage:
         """Determine if `column` has implicit Joins and return them if so"""
         if not sco_type:
             sco_type = self.table_type(viewname)
-        aliases = {sco_type: viewname}
-        links = parse_path(column) if ':' in column else parse_prop(sco_type, column)
-        target_table = None
-        target_column = None
-        results = []  # Query components to return
-        for link in links:
-            if link[0] == 'node':
-                if not target_table:
-                    target_table = link[1] or viewname
-                if not target_column:
-                    target_column = link[2]
-                else:
-                    target_column += f'.{link[2]}'
-            elif link[0] == 'rel':
-                from_type = link[1] or viewname
-                ref_name = link[2]
-                if target_column:
-                    target_column = None
-                to_type = link[3]
-                target_table = to_type
-                lhs = aliases.get(from_type, from_type)
-                alias, _, _ = ref_name.rpartition('_')
-                aliases[to_type] = alias
-                if ref_name.endswith('_refs'):
-                    # Handle reflist
-                    # TODO: need to add ref_name to Join condition?
-                    results.append(Join('__reflist', 'id', '=', 'source_ref', lhs=lhs, alias='r'))
-                    results.append(Join(to_type, 'target_ref', '=', 'id', lhs='r', alias=alias))
-                else:
-                    results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
-            target_table = aliases.get(target_table, target_table)
-        return results, target_table, target_column
+        return get_path_joins(viewname, sco_type, column)
 
     def _extract(self, viewname, sco_type, tablename, pattern, query_id=None):
         """Extract rows from `tablename` to create view `viewname`"""

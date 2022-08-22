@@ -576,7 +576,11 @@ class PgStorage(SqlStorage):
         valnames = ', '.join(quoted_colnames)
 
         # Create a temp table that copies the structure of `tablename`
-        cursor.execute(f'CREATE TEMP TABLE tmp AS SELECT * FROM "{tablename}" WHERE 1=2;')
+        #cursor.execute(f'CREATE TEMP TABLE tmp AS SELECT * FROM "{tablename}" WHERE 1=2;')
+        s = ', '.join([f'"{name}" {ctype}' for name, ctype in schema.items()])
+        stmt = f'CREATE TEMP TABLE tmp ({s})'
+        logger.debug('%s', stmt)
+        cursor.execute(stmt)
 
         # Create a generator over `objs` that returns text formatted objects
         copy_stmt = f"COPY tmp({valnames}) FROM STDIN WITH DELIMITER '{SEP}'"
