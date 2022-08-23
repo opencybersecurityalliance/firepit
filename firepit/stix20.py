@@ -43,6 +43,7 @@ def _convert_op(sco_type, prop, op, rhs):
         elif op == 'LIKE':
             return f'{neg} like_bin(CAST({rhs} AS TEXT), "{prop}")'
     elif op == 'MATCHES':
+        rhs = rhs.replace('\\\\', '\\')
         return f'{neg} match({rhs}, "{prop}")'
     prop, chunk, subprop = prop.partition('[*]')
     if chunk:
