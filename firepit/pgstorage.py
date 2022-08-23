@@ -28,6 +28,17 @@ CHECK_FOR_QUERIES_TABLE = (
     " AND  TABLE_NAME = '__queries'))"
 )
 
+CHECK_FOR_COMMON_SCHEMA = (
+    "SELECT routines.routine_name"
+    " FROM information_schema.routines"
+    " WHERE routines.specific_schema = 'firepit_common'"
+)
+
+MATCH_FUN = '''CREATE FUNCTION firepit_common.match(pattern TEXT, value TEXT)
+RETURNS boolean AS $$
+    SELECT regexp_match(value, pattern) IS NOT NULL;
+$$ LANGUAGE SQL;'''
+
 MATCH_BIN = '''CREATE FUNCTION firepit_common.match_bin(pattern TEXT, value TEXT)
 RETURNS boolean AS $$
     SELECT regexp_match(convert_from(decode(value, 'base64'), 'UTF8'), pattern) IS NOT NULL;
@@ -36,6 +47,11 @@ $$ LANGUAGE SQL;'''
 LIKE_BIN = '''CREATE FUNCTION firepit_common.like_bin(pattern TEXT, value TEXT)
 RETURNS boolean AS $$
     SELECT convert_from(decode(value, 'base64'), 'UTF8') LIKE pattern;
+$$ LANGUAGE SQL;'''
+
+SUBNET_FUN = '''CREATE FUNCTION firepit_common.in_subnet(addr TEXT, net TEXT)
+RETURNS boolean AS $$
+    SELECT addr::inet <<= net::inet;
 $$ LANGUAGE SQL;'''
 
 METADATA_TABLE = ('CREATE UNLOGGED TABLE IF NOT EXISTS "__metadata" '
@@ -256,23 +272,14 @@ class PgStorage(SqlStorage):
 
     def _create_firepit_common_schema(self):
         try:
-            stmt = ("SELECT routines.routine_name"
-                    " FROM information_schema.routines"
-                    " WHERE routines.specific_schema = 'firepit_common'")
-            res = self._query(stmt).fetchall()
+            res = self._query(CHECK_FOR_COMMON_SCHEMA).fetchall()
             if not res:
                 self._execute('CREATE SCHEMA IF NOT EXISTS "firepit_common";')
                 cursor = self._execute('BEGIN;')
-                self._execute('''CREATE FUNCTION firepit_common.match(pattern TEXT, value TEXT)
-                                RETURNS boolean AS $$
-                                    SELECT regexp_match(value, pattern) IS NOT NULL;
-                            $$ LANGUAGE SQL;''', cursor=cursor)
+                self._execute(MATCH_FUN, cursor=cursor)
                 self._execute(MATCH_BIN, cursor=cursor)
                 self._execute(LIKE_BIN, cursor=cursor)
-                self._execute('''CREATE FUNCTION firepit_common.in_subnet(addr TEXT, net TEXT)
-                                RETURNS boolean AS $$
-                                    SELECT addr::inet <<= net::inet;
-                            $$ LANGUAGE SQL;''', cursor=cursor)
+                self._execute(SUBNET_FUN, cursor=cursor)
                 cursor.close()
             elif len(res) < 4:
                 # Might need to add new functions
