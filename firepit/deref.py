@@ -11,21 +11,21 @@ from firepit.query import CoalescedColumn, Column, Filter, Join, Predicate, Proj
 logger = logging.getLogger(__name__)
 
 
-def _make_join(store, lhs, ref, rhs, path, proj):
+def _make_join(col_dict, lhs, ref, rhs, path, proj):
     # Use the `ref` prop as the alias for table `rhs`
     # Important because e.g. network-traffic needs to JOIN ipv4-addr twice
     alias = '.'.join(path).replace('.', '__')
     proj.extend(
         [
             Column(c, alias, ".".join(path + [c]))
-            for c in store.columns(rhs)
+            for c in col_dict[rhs]
             if c != ref and not c.endswith('_ref')
         ]
     )
     return Join(rhs, ref, "=", "id", how="LEFT OUTER", alias=alias, lhs=lhs)
 
 
-def _join_ip_tables(store, qry, path, proj, prop, prev_table):
+def _join_ip_tables(col_dict, qry, path, proj, prop, prev_table):
     # Special case for when we have BOTH IPv4 and IPv6
     prefix = ".".join(path)
     for n in (4, 6):
@@ -41,8 +41,8 @@ def _join_ip_tables(store, qry, path, proj, prop, prev_table):
                 lhs=prev_table,
             )
         )
-    v4_cols = set(store.columns("ipv4-addr"))
-    v6_cols = set(store.columns("ipv6-addr"))
+    v4_cols = set(col_dict["ipv4-addr"])
+    v6_cols = set(col_dict["ipv6-addr"])
     # Coalesce columns that are common to both
     for c in v4_cols & v6_cols:
         if c != prop and not c.endswith('_ref'):
@@ -75,9 +75,24 @@ def auto_deref(store, view, ignore=None, paths=None):
     Automatically resolve refs for backward compatibility.
 
     If `paths` is specified, only follow/deref those specific paths/properties.
+
+    Use auto_deref_cached if you already have col_dict in memory.
+    """
+    # Pre-load col_dict
+    cols = store.columns(view)
+    col_dict = {}
+    for t in store.types():
+        col_dict[t] = store.columns(t)
+    return auto_deref_cached(view, cols, col_dict, ignore, paths)
+
+
+def auto_deref_cached(view, cols, col_dict, ignore=None, paths=None):
+    """
+    Automatically resolve refs for backward compatibility.
+
+    If `paths` is specified, only follow/deref those specific paths/properties.
     """
     proj = []
-    cols = store.columns(view)
     if 'id' not in cols:
         # view is probably an aggregate; bail
         return [], None
@@ -106,9 +121,11 @@ def auto_deref(store, view, ignore=None, paths=None):
         if (not col.endswith("_ref") or
             view == 'relationship' and col in ('source_ref' ,'target_ref')):
             proj.append(Column(col, view))
-    all_types = set(store.types())
+    if col_dict:
+        all_types = set(col_dict.keys())
+        col_dict[view] = cols  # TEMP: make sure this has no bad side effects
     mixed_ips = ('ipv4-addr' in all_types and 'ipv6-addr' in all_types)
-    root = _dfs(store, view, all_types=all_types, ignore=ignore)
+    root = _dfs(col_dict, view, all_types=all_types, ignore=ignore)
     #print(RenderTree(root))
     joins = []
     aliases = {}
@@ -119,16 +136,16 @@ def auto_deref(store, view, ignore=None, paths=None):
             aliases[node.name] = '.'.join(path).replace('.', '__')
             if mixed_ips and node.name.startswith("ipv"):
                 # special case for concurrent ipv4 and 6
-                _join_ip_tables(store, joins, path, proj, node.edge, parent)
+                _join_ip_tables(col_dict, joins, path, proj, node.edge, parent)
             else:
-                joins.append(_make_join(store, parent, node.edge, node.name, path, proj))
-        if node.name == 'process' and 'parent_ref' in store.columns('process'):
+                joins.append(_make_join(col_dict, parent, node.edge, node.name, path, proj))
+        if node.name == 'process' and 'parent_ref' in col_dict['process']:
             # special case for process:parent_ref
             path = [n.edge for n in node.path if n.edge] + ['parent_ref']
             parent = '.'.join(path).replace('.', '__')
             alias = aliases.get('process', node.edge)
             # This sets up the projection but gets the JOIN wrong
-            _make_join(store, parent, 'parent_ref', 'process', path, proj)
+            _make_join(col_dict, parent, 'parent_ref', 'process', path, proj)
             joins.append(Join('process', 'parent_ref', '=', 'id',
                               how='LEFT OUTER', alias=parent, lhs=alias))
 
@@ -160,17 +177,17 @@ def auto_deref(store, view, ignore=None, paths=None):
     return joins, proj
 
 
-def _dfs(store, sco_type, parent=None, ref=None, all_types=None, ignore=None):
+def _dfs(col_dict, sco_type, parent=None, ref=None, all_types=None, ignore=None):
     """Depth-first search for reference dependencies"""
     node = Node(sco_type, parent=parent, edge=ref)
-    props = store.columns(sco_type)
+    props = col_dict[sco_type]
     ignore_props = ignore.get(sco_type, [])
     for prop in props:
         if prop.endswith("_ref") and prop not in ignore_props:
             rtypes = list(set(ref_type(sco_type, get_last(prop))) & all_types)
             ptype = rtypes[0] if rtypes else None
             if ptype and ptype != sco_type:
-                _dfs(store, ptype, parent=node, ref=prop, all_types=all_types, ignore=ignore)
+                _dfs(col_dict, ptype, parent=node, ref=prop, all_types=all_types, ignore=ignore)
     return node
 
 

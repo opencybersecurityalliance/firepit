@@ -148,7 +148,7 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
 
     store.delete()
     store = tmp_storage(tmpdir)
-    assert len(store.tables()) == 0
+    assert len(store.tables()) <= 2  # could be pre-populated with observed-data and identity
 
 
 def test_join(fake_bundle_file, tmpdir):

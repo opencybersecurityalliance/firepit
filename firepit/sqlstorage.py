@@ -2,10 +2,13 @@ import logging
 import re
 import uuid
 
+from collections import defaultdict
+
 import ujson
 
 from firepit import raft
 from firepit.deref import auto_deref
+from firepit.deref import auto_deref_cached
 from firepit.deref import unresolve
 from firepit.exceptions import DatabaseMismatch
 from firepit.exceptions import IncompatibleType
@@ -54,6 +57,15 @@ def _transform(filename):
                 yield o
         else:
             yield obj
+
+
+def _get_col_dict(store):
+    q = Query('__columns')
+    col_dict = defaultdict(list)
+    results = store.run_query(q).fetchall()
+    for result in results:
+        col_dict[result['otype']].append(result['path'])
+    return col_dict
 
 
 def infer_type(key, value):
@@ -569,7 +581,7 @@ class SqlStorage:
         self.connection.commit()
         cursor.close()
 
-    def lookup(self, viewname, cols="*", limit=None, offset=None):
+    def lookup(self, viewname, cols="*", limit=None, offset=None, col_dict=None):
         """Get the value of `viewname`"""
         # Preserve sort order, if it's been specified
         # The joins below can reorder
@@ -598,7 +610,14 @@ class SqlStorage:
                     proj.append(Column(col, viewname))
             qry.append(Projection(proj))
         else:
-            joins, proj = auto_deref(self, viewname)
+            if col_dict:
+                if viewname not in col_dict:
+                    dbcols = self.columns(viewname)
+                else:
+                    dbcols = col_dict[viewname]
+                joins, proj = auto_deref_cached(viewname, dbcols, col_dict)
+            else:
+                joins, proj = auto_deref(self, viewname)
             if joins:
                 qry.extend(joins)
             if proj:
