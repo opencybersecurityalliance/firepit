@@ -68,6 +68,25 @@ def _get_col_dict(store):
     return col_dict
 
 
+def _format_query(query, dialect):
+    query_text, query_values = query.render('{}', dialect)
+    formatted_values = [f"'{v}'" if isinstance(v, str) else v for v in query_values]
+    return query_text.format(*formatted_values)
+
+
+def _make_aggs(group_cols, sco_type, schema):
+    group_colnames = {c.name if hasattr(c, 'name') else c for c in group_cols}
+    aggs = []
+    for col in schema:
+        # Don't aggregate the columns we used for grouping
+        if col['name'] in group_colnames:
+            continue
+        agg = auto_agg_tuple(sco_type, col['name'], col['type'])
+        if agg:
+            aggs.append(agg)
+    return Aggregation(aggs)
+
+
 def infer_type(key, value):
     if key == 'id':
         rtype = 'TEXT UNIQUE'
@@ -802,32 +821,19 @@ class SqlStorage:
         # Deduce SCO type and "deps" of viewname from query
         on = query.table.name
         deps = [on]
+        schema = None
         if not sco_type:
             sco_type = self.table_type(on)
             logger.debug('Deduced type of %s as %s', viewname, sco_type)
-        found_agg = bool(query.aggs)
         if query.groupby:
-            group_cols = query.groupby.cols
-        else:
-            group_cols = []
+            if not bool(query.aggs) and sco_type:
+                schema = self.schema(sco_type)
 
-        # if no aggs supplied, do "auto aggregation"
-        if group_cols and not found_agg and sco_type:
-            group_colnames = {c.name if hasattr(c, 'name') else c for c in group_cols}
-            aggs = []
-            for col in self.schema(sco_type):  #viewname):
-                # Don't aggregate the columns we used for grouping
-                if col['name'] in group_colnames:
-                    continue
-                agg = auto_agg_tuple(sco_type, col['name'], col['type'])
-                if agg:
-                    aggs.append(agg)
-            agg = Aggregation(aggs)
-            query.aggs = agg
+                # if no aggs supplied, do "auto aggregation"
+                if schema:
+                    query.aggs = _make_aggs(query.groupby.cols, sco_type, schema)
 
-        query_text, query_values = query.render('{}', self.dialect)
-        formatted_values = [f"'{v}'" if isinstance(v, str) else v for v in query_values]
-        stmt = query_text.format(*formatted_values)
+        stmt = _format_query(query, self.dialect)
         logger.debug('assign_query: %s', stmt)
         cursor = self._create_view(viewname, stmt, sco_type, deps=deps)
         self.connection.commit()
@@ -929,12 +935,12 @@ class SqlStorage:
             paths = []
             column = None
         proj = []
-        for path in paths:
-            if path == '*':
+        for p in paths:
+            if p == '*':
                 continue
-            joins, table, column = self.path_joins(viewname, None, path)
+            joins, table, column = self.path_joins(viewname, None, p)
             qry.extend(joins)
-            proj.append(Column(column, table, path))
+            proj.append(Column(column, table, p))
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
         ts_col = Column(timestamp, 'observed-data')

@@ -192,6 +192,22 @@ class TuplesToTextIO:
         return result
 
 
+def _rewrite_view_def(viewname, viewdef):
+    if viewdef:
+        stmt = viewdef['definition'].rstrip(';').replace('\n', ' ')
+
+        # PostgreSQL will "expand" the original "*" to the columns
+        # that existed at that time.  We need to get the star back, to
+        # match SQLite3's behavior.
+        logger.debug('%s original:  %s', viewname, stmt)
+        stmt = _rewrite_query(stmt)
+        logger.debug('%s rewritten: %s', viewname, stmt)
+        return stmt
+
+    # Must be a table
+    return f'SELECT * FROM "{viewname}"'
+
+
 def _rewrite_query(qry):
     parts = qry.split('UNION')
     new_parts = []
@@ -468,19 +484,7 @@ class PgStorage(SqlStorage):
                              " WHERE schemaname = %s"
                              " AND viewname = %s", (self.session_id, viewname))
         viewdef = cursor.fetchone()
-        if viewdef:
-            stmt = viewdef['definition'].rstrip(';').replace('\n', ' ')
-
-            # PostgreSQL will "expand" the original "*" to the columns
-            # that existed at that time.  We need to get the star back, to
-            # match SQLite3's behavior.
-            logger.debug('%s original:  %s', viewname, stmt)
-            stmt = _rewrite_query(stmt)
-            logger.debug('%s rewritten: %s', viewname, stmt)
-            return stmt
-
-        # Must be a table
-        return f'SELECT * FROM "{viewname}"'
+        return _rewrite_view_def(viewname, viewdef)
 
     def _is_sql_view(self, name, cursor=None):
         cursor = self._query("SELECT definition"
