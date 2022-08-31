@@ -986,7 +986,7 @@ class SqlStorage:
             ])
         )
         res = self._query_one(qry)
-        if not res:
+        if not res or res['number_observed'] is None:
             c = self.count(viewname)
             res = {'first_observed': None, 'last_observed': None, 'number_observed': c}
         elif res['number_observed'] is not None:
