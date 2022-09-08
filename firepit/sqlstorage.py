@@ -2,10 +2,13 @@ import logging
 import re
 import uuid
 
+from collections import defaultdict
+
 import ujson
 
 from firepit import raft
 from firepit.deref import auto_deref
+from firepit.deref import auto_deref_cached
 from firepit.deref import unresolve
 from firepit.exceptions import DatabaseMismatch
 from firepit.exceptions import IncompatibleType
@@ -56,6 +59,34 @@ def _transform(filename):
             yield obj
 
 
+def _get_col_dict(store):
+    q = Query('__columns')
+    col_dict = defaultdict(list)
+    results = store.run_query(q).fetchall()
+    for result in results:
+        col_dict[result['otype']].append(result['path'])
+    return col_dict
+
+
+def _format_query(query, dialect):
+    query_text, query_values = query.render('{}', dialect)
+    formatted_values = [f"'{v}'" if isinstance(v, str) else v for v in query_values]
+    return query_text.format(*formatted_values)
+
+
+def _make_aggs(group_cols, sco_type, schema):
+    group_colnames = {c.name if hasattr(c, 'name') else c for c in group_cols}
+    aggs = []
+    for col in schema:
+        # Don't aggregate the columns we used for grouping
+        if col['name'] in group_colnames:
+            continue
+        agg = auto_agg_tuple(sco_type, col['name'], col['type'])
+        if agg:
+            aggs.append(agg)
+    return Aggregation(aggs)
+
+
 def infer_type(key, value):
     if key == 'id':
         rtype = 'TEXT UNIQUE'
@@ -72,6 +103,42 @@ def infer_type(key, value):
     else:
         rtype = 'TEXT'
     return rtype
+
+
+def get_path_joins(viewname, sco_type, column):
+    """Determine if `column` has implicit Joins and return them if so"""
+    aliases = {sco_type: viewname}
+    links = parse_path(column) if ':' in column else parse_prop(sco_type, column)
+    target_table = None
+    target_column = None
+    results = []  # Query components to return
+    for link in links:
+        if link[0] == 'node':
+            if not target_table:
+                target_table = link[1] or viewname
+            if not target_column:
+                target_column = link[2]
+            else:
+                target_column += f'.{link[2]}'
+        elif link[0] == 'rel':
+            from_type = link[1] or viewname
+            ref_name = link[2]
+            if target_column:
+                target_column = None
+            to_type = link[3]
+            target_table = to_type
+            lhs = aliases.get(from_type, from_type)
+            alias, _, _ = ref_name.rpartition('_')
+            aliases[to_type] = alias
+            if ref_name.endswith('_refs'):
+                # Handle reflist
+                # TODO: need to add ref_name to Join condition?
+                results.append(Join('__reflist', 'id', '=', 'source_ref', lhs=lhs, alias='r'))
+                results.append(Join(to_type, 'target_ref', '=', 'id', lhs='r', alias=alias))
+            else:
+                results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
+        target_table = aliases.get(target_table, target_table)
+    return results, target_table, target_column
 
 
 class SqlStorage:
@@ -269,38 +336,7 @@ class SqlStorage:
         """Determine if `column` has implicit Joins and return them if so"""
         if not sco_type:
             sco_type = self.table_type(viewname)
-        aliases = {sco_type: viewname}
-        links = parse_path(column) if ':' in column else parse_prop(sco_type, column)
-        target_table = None
-        target_column = None
-        results = []  # Query components to return
-        for link in links:
-            if link[0] == 'node':
-                if not target_table:
-                    target_table = link[1] or viewname
-                if not target_column:
-                    target_column = link[2]
-                else:
-                    target_column += f'.{link[2]}'
-            elif link[0] == 'rel':
-                from_type = link[1] or viewname
-                ref_name = link[2]
-                if target_column:
-                    target_column = None
-                to_type = link[3]
-                target_table = to_type
-                lhs = aliases.get(from_type, from_type)
-                alias, _, _ = ref_name.rpartition('_')
-                aliases[to_type] = alias
-                if ref_name.endswith('_refs'):
-                    # Handle reflist
-                    # TODO: need to add ref_name to Join condition?
-                    results.append(Join('__reflist', 'id', '=', 'source_ref', lhs=lhs, alias='r'))
-                    results.append(Join(to_type, 'target_ref', '=', 'id', lhs='r', alias=alias))
-                else:
-                    results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
-            target_table = aliases.get(target_table, target_table)
-        return results, target_table, target_column
+        return get_path_joins(viewname, sco_type, column)
 
     def _extract(self, viewname, sco_type, tablename, pattern, query_id=None):
         """Extract rows from `tablename` to create view `viewname`"""
@@ -564,7 +600,7 @@ class SqlStorage:
         self.connection.commit()
         cursor.close()
 
-    def lookup(self, viewname, cols="*", limit=None, offset=None):
+    def lookup(self, viewname, cols="*", limit=None, offset=None, col_dict=None):
         """Get the value of `viewname`"""
         # Preserve sort order, if it's been specified
         # The joins below can reorder
@@ -593,7 +629,14 @@ class SqlStorage:
                     proj.append(Column(col, viewname))
             qry.append(Projection(proj))
         else:
-            joins, proj = auto_deref(self, viewname)
+            if col_dict:
+                if viewname not in col_dict:
+                    dbcols = self.columns(viewname)
+                else:
+                    dbcols = col_dict[viewname]
+                joins, proj = auto_deref_cached(viewname, dbcols, col_dict)
+            else:
+                joins, proj = auto_deref(self, viewname)
             if joins:
                 qry.extend(joins)
             if proj:
@@ -778,32 +821,19 @@ class SqlStorage:
         # Deduce SCO type and "deps" of viewname from query
         on = query.table.name
         deps = [on]
+        schema = None
         if not sco_type:
             sco_type = self.table_type(on)
             logger.debug('Deduced type of %s as %s', viewname, sco_type)
-        found_agg = bool(query.aggs)
         if query.groupby:
-            group_cols = query.groupby.cols
-        else:
-            group_cols = []
+            if not bool(query.aggs) and sco_type:
+                schema = self.schema(sco_type)
 
-        # if no aggs supplied, do "auto aggregation"
-        if group_cols and not found_agg and sco_type:
-            group_colnames = {c.name if hasattr(c, 'name') else c for c in group_cols}
-            aggs = []
-            for col in self.schema(sco_type):  #viewname):
-                # Don't aggregate the columns we used for grouping
-                if col['name'] in group_colnames:
-                    continue
-                agg = auto_agg_tuple(sco_type, col['name'], col['type'])
-                if agg:
-                    aggs.append(agg)
-            agg = Aggregation(aggs)
-            query.aggs = agg
+                # if no aggs supplied, do "auto aggregation"
+                if schema:
+                    query.aggs = _make_aggs(query.groupby.cols, sco_type, schema)
 
-        query_text, query_values = query.render('{}', self.dialect)
-        formatted_values = [f"'{v}'" if isinstance(v, str) else v for v in query_values]
-        stmt = query_text.format(*formatted_values)
+        stmt = _format_query(query, self.dialect)
         logger.debug('assign_query: %s', stmt)
         cursor = self._create_view(viewname, stmt, sco_type, deps=deps)
         self.connection.commit()
@@ -905,12 +935,12 @@ class SqlStorage:
             paths = []
             column = None
         proj = []
-        for path in paths:
-            if path == '*':
+        for p in paths:
+            if p == '*':
                 continue
-            joins, table, column = self.path_joins(viewname, None, path)
+            joins, table, column = self.path_joins(viewname, None, p)
             qry.extend(joins)
-            proj.append(Column(column, table, path))
+            proj.append(Column(column, table, p))
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
         ts_col = Column(timestamp, 'observed-data')
@@ -956,7 +986,7 @@ class SqlStorage:
             ])
         )
         res = self._query_one(qry)
-        if not res:
+        if not res or res['number_observed'] is None:
             c = self.count(viewname)
             res = {'first_observed': None, 'last_observed': None, 'number_observed': c}
         elif res['number_observed'] is not None:

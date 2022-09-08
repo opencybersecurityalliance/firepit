@@ -256,6 +256,9 @@ class SplitWriter:
             except DuplicateTable:
                 # Refresh schemas
                 loaded_schema = self._load_schema(obj_type)
+
+                # Figure out if we have any new columns
+                # Don't care if remote has columns we don't
                 new_columns = {}
                 for key in set(schema) - set(loaded_schema):
                     new_columns[key] = schema[key]
