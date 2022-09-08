@@ -60,3 +60,18 @@ def test_matches(one_event_bundle, tmpdir):
     )
     y = store.lookup('y')
     assert len(y) == 0
+
+
+def test_matches_regkey(regkey_bundle, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', regkey_bundle)
+
+    # Match using STIX pattern and MATCHES operator
+    store.extract(
+        'x',
+        'windows-registry-key',
+        'q1',
+        r"[windows-registry-key:key MATCHES '^.*\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run(Once)?$']",
+    )
+    x = store.lookup('x')
+    assert len(x) == 1

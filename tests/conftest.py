@@ -59,3 +59,9 @@ def one_event_bundle():
 def mixed_v4_v6_bundle():
     cwd = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(cwd, 'mixed-v4-v6.json')
+
+
+@pytest.fixture
+def regkey_bundle():
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(cwd, 'regkey-example.json')

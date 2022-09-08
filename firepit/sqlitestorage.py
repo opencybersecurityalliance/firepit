@@ -67,6 +67,7 @@ def _like_bin(pattern, value):
 class SQLiteStorage(SqlStorage):
     def __init__(self, dbname):
         super().__init__()
+        self.dialect = 'sqlite3'
         self.placeholder = '?'
         self.dbname = dbname
         self.connection = sqlite3.connect(dbname)
