@@ -1,6 +1,7 @@
 import pytest
 
 from firepit.props import auto_agg
+from firepit.props import parse_path
 from firepit.props import path_metadata
 from firepit.props import primary_prop
 from firepit.props import prop_metadata
@@ -77,3 +78,24 @@ def test_prop_metadata(sco_type, prop, dtype, ftype):
     data = prop_metadata(sco_type, prop)
     assert data['dtype'] == dtype
     assert data['ftype'] == ftype
+
+
+@pytest.mark.parametrize(
+    'path, expected', [
+        ('network-traffic:src_ref.value',
+         [('rel', 'network-traffic', 'src_ref', 'ipv4-addr'),
+          ('node', 'ipv4-addr', 'value')]
+        ),
+        ('process:binary_ref.parent_directory_ref.path',
+         [('rel', 'process', 'binary_ref', 'file'),
+          ('rel', 'file', 'parent_directory_ref', 'directory'),
+          ('node', 'directory', 'path')]
+        ),
+        # This one should "fail"
+        ('foo:bar_ref.value',
+         []
+        ),
+    ]
+)
+def test_parse_path(path, expected):
+    assert parse_path(path) == expected
