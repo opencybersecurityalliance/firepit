@@ -23,6 +23,25 @@ COLUMNS_TABLE = ('CREATE TABLE IF NOT EXISTS "__columns" '
                  '(otype TEXT, path TEXT, shortname TEXT, dtype TEXT,'
                  ' UNIQUE(otype, path));')
 
+# Bootstrap some common SDO tables
+ID_TABLE = ('CREATE TABLE "identity" ('
+            ' "id" TEXT UNIQUE,'
+            ' "identity_class" TEXT,'
+            ' "name" TEXT,'
+            ' "created" TEXT,'
+            ' "modified" TEXT'
+            ')')
+
+OD_TABLE = ('CREATE TABLE "observed-data" ('
+            ' "id" TEXT UNIQUE,'
+            ' "created_by_ref" TEXT,'
+            ' "created" TEXT,'
+            ' "modified" TEXT,'
+            ' "first_observed" TEXT,'
+            ' "last_observed" TEXT,'
+            ' "number_observed" BIGINT'
+            ')')
+
 
 def get_storage(path):
     return SQLiteStorage(path)
@@ -91,6 +110,8 @@ class SQLiteStorage(SqlStorage):
         else:
             # Do DB initization
             cursor.execute('BEGIN;')
+            cursor.execute(ID_TABLE)
+            cursor.execute(OD_TABLE)
             self._initdb(cursor)
         cursor.close()
 
