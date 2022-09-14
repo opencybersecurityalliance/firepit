@@ -518,6 +518,9 @@ def parse_prop(sco_type, prop):
             cur_type = sco_type
             sco_type = ref_type(cur_type, part)
             if isinstance(sco_type, list):
+                if len(sco_type) == 0:
+                    # We don't know what this ref could point to!
+                    return []
                 sco_type = sco_type[0]  # FIXME: How should we handle lists?
             result.append(('rel', cur_type, part, sco_type))
             prev_type = sco_type
