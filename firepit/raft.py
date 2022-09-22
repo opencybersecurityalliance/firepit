@@ -161,7 +161,8 @@ def flatten_21(obj):
     For STIX 2.1 objects, "flatten" references
     """
     results = [obj]
-    oid = obj['id']
+    oid = str(obj['id'])
+    obj['id'] = oid  # Ensure it's a plain string
 
     obj_type = obj['type']
     if obj_type == 'identity':
@@ -172,7 +173,7 @@ def flatten_21(obj):
             results.append({
                 'type': '__contains',
                 'source_ref': oid,
-                'target_ref': ref
+                'target_ref': str(ref)
             })
         del obj['object_refs']
         return results
@@ -180,11 +181,14 @@ def flatten_21(obj):
     # Create SRO for ref lists
     ref_lists = []
     for prop, val in obj.items():
-        if prop.endswith('_refs'):
+        if prop.endswith('_ref'):
+            obj[prop] = str(val)  # Ensure it's a plain string
+        elif prop.endswith('_refs'):
             if not isinstance(val, list):
                 val = [val]
             if prop != 'object_refs':
                 for ref in val:
+                    ref = str(ref)  # Ensure it's a plain string
                     if ref != oid:  # Avoid bogus references
                         sro = {
                             'type': '__reflist',

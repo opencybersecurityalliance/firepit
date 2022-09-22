@@ -50,7 +50,7 @@ def _transform(filename):
     for obj in raft.get_objects(filename):  #, ['identity', 'observed-data']):
         # Some identity objects from stix-shifter are missing a `type` property?
         if 'type' not in obj:
-            obj['type'], _, _ = obj['id'].partition('--')
+            obj['type'], _, _ = obj['id'].rpartition('--')
         if obj['type'] != 'identity':
             for o in (raft.json_normalize(obj, flat_lists=False)
                       for obj in raft.flatten(obj)):
