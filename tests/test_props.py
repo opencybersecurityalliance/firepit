@@ -16,6 +16,9 @@ from firepit.props import prop_metadata
         ('process', 'name'),
         ('url', 'value'),
         ('user-account', 'user_id'),
+
+        # Negative cases
+        #TODO: Not sure what the behavior should be: ('x-unknown-type', None),
     ]
 )
 def test_primary_prop(sco_type, expected):
@@ -72,6 +75,10 @@ def test_path_metadata(path, dtype, ftype):
         ('file',  'name', 'str', 'categorical'),
         ('network-traffic', 'src_ref.value', 'str', 'categorical'),
         ('x-oca-event', 'network_ref.dst_byte_count', 'int', 'numerical'),
+
+        # Negative cases
+        ('x-unknown-type', 'unknown_ref.value', 'str', 'categorical'),
+        ('x-oca-event', 'unknown_ref.value', 'str', 'categorical'),
     ]
 )
 def test_prop_metadata(sco_type, prop, dtype, ftype):

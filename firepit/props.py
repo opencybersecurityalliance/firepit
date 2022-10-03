@@ -332,8 +332,11 @@ def prop_metadata(sco_type, prop):
     meta = KNOWN_PROPS.get(sco_type, {}).get(prop)
     if not meta:
         links = parse_prop(sco_type, prop)  # Maybe just do this first?
-        _, ref_type, ref_prop = links[-1]
-        meta = KNOWN_PROPS.get(ref_type, {}).get(ref_prop, {})
+        if links:
+            _, ref_type, ref_prop = links[-1]
+            meta = KNOWN_PROPS.get(ref_type, {}).get(ref_prop, {})
+        else:
+            meta = {}
     if 'dtype' not in meta:
         meta['dtype'] = 'str'
     if 'ftype' not in meta:
