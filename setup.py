@@ -58,6 +58,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/opencybersecurityalliance/firepit',
-    version='2.3.5',
+    version='2.3.6',
     zip_safe=False,
 )

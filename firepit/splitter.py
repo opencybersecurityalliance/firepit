@@ -6,6 +6,7 @@ from collections import OrderedDict, defaultdict
 import ujson
 
 from firepit.exceptions import DuplicateTable
+from firepit.exceptions import InvalidObject
 
 
 logger = logging.getLogger(__name__)
@@ -221,6 +222,8 @@ class SplitWriter:
         """Consume `obj` (actual writing to storage may be deferred)"""
         obj.update(self.extras)
         obj_type = obj['type']
+        if not obj_type:
+            raise InvalidObject('empty `type` property')
         schema = self.schemas.get(obj_type)
         add_table = False
         add_col = False
@@ -234,7 +237,10 @@ class SplitWriter:
             if key in ['type', 'spec_version']:
                 continue
             # shorten key (STIX prop) to make column names more manageable
-            shortname = self.writer.shorten(key)  # Need to detect collisions!
+            if len(key) > 63 or 'extensions.' in key:
+                shortname = self.writer.shorten(key)  # Need to detect collisions!
+            else:
+                shortname = key
             new_obj[shortname] = value
             if shortname not in schema:
                 # Found new column

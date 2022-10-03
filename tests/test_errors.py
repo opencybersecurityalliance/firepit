@@ -3,6 +3,7 @@ import pytest
 
 from firepit.exceptions import IncompatibleType
 from firepit.exceptions import InvalidAttr
+from firepit.exceptions import InvalidObject
 from firepit.exceptions import InvalidStixPath
 from firepit.exceptions import InvalidViewname
 from firepit.exceptions import StixPatternError
@@ -214,3 +215,135 @@ def test_assign_query_sqli_group(fake_bundle_file, tmpdir):
             Table('conns'),
             Group(['src_ref.value where 1=2; select * from identity; --'])
         ])
+
+
+def test_empty_type(tmpdir):
+    store = tmp_storage(tmpdir)
+
+    # Some actual crap I've seen
+    b1 = {
+        "type": "bundle",
+        "id": "bundle--0911b0a3-7a32-4bd5-bddd-5757bd87e8a0",
+        "objects": [
+            {
+                "type": "identity",
+                "id": "identity--ec1709c3-63a6-4fac-94d7-e648355d35a4",
+                "created": "2020-06-30T19:31:23.304Z",
+                "modified": "2020-06-30T19:31:23.304Z",
+                "name": "test",
+                "identity_class": "organization"
+            },
+            {
+                "type": "",  # Clearly not valid
+                "id": "27f23ce-93de-4ee3-8dd1-cbb4e5b005cd",
+                "value": "foo"
+            },
+            {
+                "spec_version": "2.1",
+                "type": "observed-data",
+                "id": "observed-data--4bd9c203-a327-4b81-b2fa-e6fc8d705dcc",
+                "created_by_ref": "identity--ec1709c3-63a6-4fac-94d7-e648355d35a4",
+                "created": "2020-06-30T19:31:23.651Z",
+                "modified": "2020-06-30T19:31:23.651Z",
+                "first_observed": "2020-06-30T19:25:09.447726Z",
+                "last_observed": "2020-06-30T19:28:49.692424Z",
+                "number_observed": 1,
+                "object_refs": [
+                    "27f23ce-93de-4ee3-8dd1-cbb4e5b005cd",
+                ]
+            }
+        ]
+    }
+    with pytest.raises(InvalidObject):
+        store.cache('b1', b1)
+
+
+def test_missing_type(tmpdir):
+    store = tmp_storage(tmpdir)
+
+    # Some actual crap I've seen
+    b1 = {
+        "type": "bundle",
+        "id": "bundle--0911b0a3-7a32-4bd5-bddd-5757bd87e8a0",
+        "objects": [
+            {
+                "type": "identity",
+                "id": "identity--ec1709c3-63a6-4fac-94d7-e648355d35a4",
+                "created": "2020-06-30T19:31:23.304Z",
+                "modified": "2020-06-30T19:31:23.304Z",
+                "name": "test",
+                "identity_class": "organization"
+            },
+            {
+                "id": "27f23ce-93de-4ee3-8dd1-cbb4e5b005cd",
+                "value": "foo"
+            },
+            {
+                "spec_version": "2.1",
+                "type": "observed-data",
+                "id": "observed-data--4bd9c203-a327-4b81-b2fa-e6fc8d705dcc",
+                "created_by_ref": "identity--ec1709c3-63a6-4fac-94d7-e648355d35a4",
+                "created": "2020-06-30T19:31:23.651Z",
+                "modified": "2020-06-30T19:31:23.651Z",
+                "first_observed": "2020-06-30T19:25:09.447726Z",
+                "last_observed": "2020-06-30T19:28:49.692424Z",
+                "number_observed": 1,
+                "object_refs": [
+                    "27f23ce-93de-4ee3-8dd1-cbb4e5b005cd",
+                ]
+            }
+        ]
+    }
+    with pytest.raises(InvalidObject):
+        store.cache('b1', b1)
+
+
+def test_non_str_id(tmpdir):
+    store = tmp_storage(tmpdir)
+
+    # Some actual crap I've seen
+    class MyId:
+        oid: str = None
+
+        def __init__(self, oid_):
+            self.oid = oid_
+
+        def __str__(self):
+            return self.oid
+
+    my_id = MyId("ipv4-addr--3b9b974c-af2e-55e2-921d-647f8777356e")
+    b1 = {
+        "type": "bundle",
+        "id": "bundle--0911b0a3-7a32-4bd5-bddd-5757bd87e8a0",
+        "objects": [
+            {
+                "type": "identity",
+                "id": "identity--ec1709c3-63a6-4fac-94d7-e648355d35a4",
+                "created": "2020-06-30T19:31:23.304Z",
+                "modified": "2020-06-30T19:31:23.304Z",
+                "name": "test",
+                "identity_class": "organization"
+            },
+            {
+                "spec_version": "2.1",
+                "type": "ipv4-addr",
+                "id": my_id,
+                "value": "198.51.100.123"
+            },
+            {
+                "spec_version": "2.1",
+                "type": "observed-data",
+                "id": "observed-data--4bd9c203-a327-4b81-b2fa-e6fc8d705dcc",
+                "created_by_ref": "identity--ec1709c3-63a6-4fac-94d7-e648355d35a4",
+                "created": "2020-06-30T19:31:23.651Z",
+                "modified": "2020-06-30T19:31:23.651Z",
+                "first_observed": "2020-06-30T19:25:09.447726Z",
+                "last_observed": "2020-06-30T19:28:49.692424Z",
+                "number_observed": 1,
+                "object_refs": [
+                    my_id
+                ]
+            }
+        ]
+    }
+    store.cache('b1', b1)
