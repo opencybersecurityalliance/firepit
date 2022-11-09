@@ -16,6 +16,12 @@ from firepit.validate import validate_path
         ('foo;', False),
         ('foo; --', False),
         ('network-traffic', True),
+        ('x509-certificate', True),
+        ("admin'--", False),
+        ('admin"--', False),
+        ('foo OR "1" = "1', False),
+        ('ipv4-addr" union select * from "user-account', False),
+        ('foo; select value from "ipv4-addr', False),
     ]
 )
 def test_validate_name(name, expected):
@@ -44,6 +50,15 @@ def test_validate_name(name, expected):
         ("windows-registry-key:values[*].data", True),
         ("network-traffic:protocols[*]", True),
         ("src_port", True),
+        ("x_unique_id", True),
+        ("admin'--", False),
+        ('admin"--', False),
+        ('foo OR "1" = "1', False),
+        ('ipv4-addr" union select * from "user-account', False),
+        ('foo; select value from "ipv4-addr', False),
+        ('x-qradar:high_level_category_id', True),
+        ('high_level_category_id', True),
+        ("x_com_ibm_ariel.cre_event_list[*]", True), # old stix-shifter qradar weirdness
     ]
 )
 def test_validate_path(path, expected):
