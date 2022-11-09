@@ -711,8 +711,11 @@ class SqlStorage:
         # This is DB-specific
         raise NotImplementedError('Storage.columns')
 
-    def schema(self, viewname):
-        """Get the schema (names and types) of `viewname`"""
+    def schema(self, viewname=None):
+        """
+        Get the schema (names and types) of table/view `viewname` or all
+        tables if not specified
+        """
         # This is DB-specific
         raise NotImplementedError('Storage.schema')
 

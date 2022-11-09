@@ -39,6 +39,7 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
     ],
     description="Columnar storage for STIX 2.0 observations.",
     entry_points={
@@ -58,6 +59,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/opencybersecurityalliance/firepit',
-    version='2.3.6',
+    version='2.3.7',
     zip_safe=False,
 )

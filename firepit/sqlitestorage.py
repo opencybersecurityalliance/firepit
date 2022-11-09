@@ -293,12 +293,25 @@ class SQLiteStorage(SqlStorage):
             result = []
         return result
 
-    def schema(self, viewname):
-        validate_name(viewname)
-        stmt = f'PRAGMA table_info("{viewname}")'
-        cursor = self._execute(stmt)
-        return [{k: v for k, v in row.items() if k in ['name', 'type']}
-                for row in cursor.fetchall()]
+    def schema(self, viewname=None):
+        if viewname:
+            validate_name(viewname)
+            stmt = f'PRAGMA table_info("{viewname}")'
+            cursor = self._execute(stmt)
+            return [{k: v for k, v in row.items() if k in ['name', 'type']}
+                    for row in cursor.fetchall()]
+        else:
+            result = []
+            for obj_type in self.types(True):
+                stmt = f'PRAGMA table_info("{obj_type}")'
+                cursor = self._execute(stmt)
+                for row in cursor.fetchall():
+                    result.append({
+                        'table': obj_type,
+                        'name': row['name'],
+                        'type': row['type']
+                    })
+            return result
 
     def delete(self):
         """Delete ALL data in this store"""

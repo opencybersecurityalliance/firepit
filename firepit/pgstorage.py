@@ -524,12 +524,17 @@ class PgStorage(SqlStorage):
         rows = cursor.fetchall()
         return [i['column_name'] for i in rows]
 
-    def schema(self, viewname):
-        validate_name(viewname)
-        cursor = self._query("SELECT column_name AS name, data_type AS type"
-                             " FROM information_schema.columns"
-                             " WHERE table_schema = %s"
-                             " AND table_name = %s", (self.session_id, viewname))
+    def schema(self, viewname=None):
+        if viewname:
+            validate_name(viewname)
+            cursor = self._query("SELECT column_name AS name, data_type AS type"
+                                 " FROM information_schema.columns"
+                                 " WHERE table_schema = %s"
+                                 " AND table_name = %s", (self.session_id, viewname))
+        else:
+            cursor = self._query("SELECT table_name AS table, column_name AS name, data_type AS type"
+                                 " FROM information_schema.columns"
+                                 " WHERE table_schema = %s", (self.session_id,))
         return cursor.fetchall()
 
     def delete(self):

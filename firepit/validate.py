@@ -5,8 +5,8 @@ import re
 from firepit.exceptions import InvalidStixPath
 from firepit.exceptions import InvalidViewname
 
-NAME_PATTERN = r'^[\w-]*$'
-PATH_PATTERN = r"^([a-zA-Z][a-zA-Z0-9-]*:)?[\w\'-]+(\[\*\])?(\.[\w\'-]+)*$"
+NAME_PATTERN = r'^[\w-]+$'
+PATH_PATTERN = r"^([a-zA-Z][a-zA-Z0-9-]*:)?[\w]+(\[\*\])?((\.\w+|\.\'[a-zA-Z0-9-]+\')(\[\*\])?)*$"
 
 def validate_name(name):
     """

@@ -53,9 +53,9 @@ REG_HIVE_MAP = {
 }
 
 
-def guess_ref_type(prop, val):
+def guess_ref_type(sco_type, prop, val):
     """Get data type for `sco_type`:`prop` reference"""
-    rtypes = ref_type(None, prop)
+    rtypes = ref_type(sco_type, prop)  # FIXME: need to parse_prop first
     rtype = rtypes[0] if len(rtypes) > 0 else None  # FIXME
     if rtype == 'ipv4-addr' and ':' in val:
         rtype = 'ipv6-addr'
@@ -63,6 +63,8 @@ def guess_ref_type(prop, val):
         # just guess based on value
         if re.match(r'([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}', val):
             rtype = 'mac-addr'
+        elif re.match(r'([0-9]{1,3}\.){3}[0-9]{1,3}', val):
+            rtype = 'ipv4-addr'
     return rtype
 
 
@@ -104,7 +106,9 @@ def set_obs_prop(observable, path, val, scos, key):
     prop, _, rest = path.partition('.')
     if prop.endswith(']'):  #FIXME: not always a ref!
         ref_name, _, idx = prop.rstrip(']').partition('[')
-        ref_type = guess_ref_type(ref_name, val)
+        ref_type = guess_ref_type(observable['type'], ref_name, val)
+        if not ref_type:
+            pass #TODO
         ref_key = key + prop
         other = scos.get(ref_key, {'type': ref_type})
         if '.' in rest:
@@ -120,7 +124,7 @@ def set_obs_prop(observable, path, val, scos, key):
             refs[int(idx)] = ref_key
             observable[ref_name] = refs
     elif prop.endswith('_ref') or prop.endswith('_refs'):
-        ref_type = guess_ref_type(prop, val)
+        ref_type = guess_ref_type(observable['type'], prop, val)
         ref_key = key + prop
         other = scos.get(ref_key, {'type': ref_type})
         if '.' in rest:
@@ -212,7 +216,11 @@ def dict2observation(creator, row):
             sco_type, _, rest = key.partition(':')
             sco_key = sco_name or sco_type
             observable = scos.get(sco_key, {'type': sco_type})
-            set_obs_prop(observable, rest, val, scos, sco_type + ':')
+            if rest.endswith('_ref') and ':' in val:
+                # Special case for referencing another value
+                observable[rest] = val
+            else:
+                set_obs_prop(observable, rest, val, scos, sco_type + ':')
             scos[sco_key] = observable
     od['objects'] = {}
 

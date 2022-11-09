@@ -1,4 +1,4 @@
-from datetime import datetime
+from dateutil.parser import parse
 
 KNOWN_TIMESTAMPS = {
     'accessed',
@@ -31,4 +31,4 @@ def timefmt(t, prec=3):
 
 def to_datetime(timestamp):
     """Convert RFC 3339-format `timestamp` to Python datetime"""
-    return datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+    return parse(timestamp)

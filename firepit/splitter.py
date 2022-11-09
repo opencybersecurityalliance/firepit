@@ -153,8 +153,8 @@ class SqlWriter:
         tables = self.store.types(private)
         return [_strip_prefix(table, self.prefix) for table in tables]
 
-    def properties(self, obj_type):
-        tablename = f'{self.prefix}{obj_type}'
+    def properties(self, obj_type=None):
+        tablename = f'{self.prefix}{obj_type}' if obj_type else None
         return self.store.schema(tablename)
 
 
@@ -212,11 +212,14 @@ class SplitWriter:
         pass
 
     def _load_schema(self, obj_type):
+        logger.debug('_load_schema for %s', obj_type)
         return {col['name']: col['type'] for col in self.writer.properties(obj_type)}
 
     def _load_schemas(self):
-        for obj_type in self.writer.types(True):
-            self.schemas[obj_type] = self._load_schema(obj_type)
+        for col in self.writer.properties():
+            schema = self.schemas.get(col['table'], {})
+            schema[col['name']] = col['type']
+            self.schemas[col['table']] = schema
 
     def write(self, obj):
         """Consume `obj` (actual writing to storage may be deferred)"""
