@@ -343,7 +343,7 @@ class SqlStorage:
         validate_name(viewname)
         validate_name(tablename)
         try:
-            where = stix2sql(pattern, sco_type) if pattern else None
+            where = stix2sql(pattern, sco_type, self.dialect) if pattern else None
         except Exception as e:
             logger.error('%s', e)
             raise StixPatternError(pattern) from e
@@ -589,7 +589,7 @@ class SqlStorage:
                      sco_type, viewname, input_view, pattern)
         slct = self._get_view_def(input_view)
         try:
-            where = stix2sql(pattern, sco_type) if pattern else None
+            where = stix2sql(pattern, sco_type, self.dialect) if pattern else None
         except Exception as e:
             logger.error('%s', e)
             raise StixPatternError(pattern) from e

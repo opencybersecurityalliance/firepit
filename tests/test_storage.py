@@ -113,10 +113,8 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     print(grouped_users)
     henry = next((item for item in grouped_users if item['account_login'] == 'henry'), None)
     assert henry
-    #assert henry['number_observed'] == 2
     isabel = next((item for item in grouped_users if item['account_login'] == 'isabel'), None)
     assert isabel
-    #assert isabel['number_observed'] == 12
 
     with open(fake_csv_file, newline='') as fp:
         reader = csv.DictReader(fp)
@@ -134,8 +132,8 @@ def test_basic(fake_bundle_file, fake_csv_file, tmpdir):
     ids = [row['id'] for row in rows]
     assert 'process--41eb677f-0335-49da-98b8-375e22f8c94e_0' in ids
     assert 'process--0bb2e61f-8c88-415d-bb7a-bcffc991c38e_0' in ids
-    #assert rows[1]['binary_ref.parent_directory_ref.path'] == 'C:\\Windows\\System32'
-    #assert rows[2]['parent_ref.command_line'] == 'C:\\windows\\system32\\cmd.exe /c "reg delete HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run /v caldera /f"'
+    assert rows[1]['binary_ref.parent_directory_ref.path'] == 'C:\\Windows\\System32'
+    assert rows[2]['parent_ref.command_line'] == 'C:\\windows\\system32\\cmd.exe /c "reg delete HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run /v caldera /f"'
 
     ips = ['10.0.0.1', '10.0.0.2']
     res = store.load('test_ips', ips, sco_type='ipv4-addr')
