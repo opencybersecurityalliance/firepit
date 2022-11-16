@@ -92,6 +92,20 @@ def test_matches_regkey(regkey_bundle, tmpdir):
     assert len(x) == 1
 
 
+def test_matches_commandline_literal_dot(ccoe_bundle, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [ccoe_bundle])
+
+    store.extract(
+        'procs',
+        'process',
+        'q1',
+        r"[process:command_line MATCHES '^C:\\\\WINDOWS\\\\system32\\\\services\\.exe$']"
+    )
+    procs = store.lookup('procs')
+    assert len(procs) == 2
+
+
 def test_equal_commandline_backslash(ccoe_bundle, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', [ccoe_bundle])
