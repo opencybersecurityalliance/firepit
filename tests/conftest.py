@@ -65,3 +65,9 @@ def mixed_v4_v6_bundle():
 def regkey_bundle():
     cwd = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(cwd, 'regkey-example.json')
+
+
+@pytest.fixture
+def service_bundle():
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(cwd, 'service-example.json')

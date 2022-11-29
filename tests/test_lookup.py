@@ -1,3 +1,4 @@
+import json
 from collections import Counter
 
 from .helpers import tmp_storage
@@ -54,3 +55,16 @@ def test_lookup_procs(ccoe_bundle, tmpdir):
     procs = store.lookup('procs')
     assert len(procs) == 563  # 1021
     assert 'parent_ref.pid' in procs[0]
+
+
+def test_lookup_procs_service(service_bundle, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [service_bundle])
+
+    #TODO:store.extract('procs', 'process', 'q1', "[process:extensions.'windows-service-ext'.service_name = 'MyService']")
+    store.extract('procs', 'process', 'q1', "[process:binary_ref.name = 'runme.exe']")
+    procs = store.lookup('procs')
+    print(json.dumps(procs, indent=4))
+    assert len(procs) == 1
+    assert procs[0]['x_service_name'] == 'MyService'
+    assert 'x_service_dll_refs' not in procs[0]

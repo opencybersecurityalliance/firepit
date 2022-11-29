@@ -160,13 +160,13 @@ def flatten_21(obj):
     """
     For STIX 2.1 objects, "flatten" references
     """
-    results = [obj]
+    results = []
     oid = str(obj['id'])
     obj['id'] = oid  # Ensure it's a plain string
 
     obj_type = obj['type']
     if obj_type == 'identity':
-        return results
+        return [obj]
     elif obj_type == 'observed-data':
         for ref in obj['object_refs']:
             # Append pseudo-relationship for "Observtion CONTAINS SCO"
@@ -176,6 +176,7 @@ def flatten_21(obj):
                 'target_ref': str(ref)
             })
         del obj['object_refs']
+        results.append(json_normalize(obj, flat_lists=False))
         return results
 
     # Create SRO for ref lists
@@ -203,6 +204,7 @@ def flatten_21(obj):
 
     for prop in ref_lists:
         del obj[prop]
+    results.append(json_normalize(obj, flat_lists=False))
 
     return results
 
@@ -219,18 +221,21 @@ def flatten(obs):
 
     scos = obs['objects']
     ref_map = {}
-    results = [obs]
+    results = []
 
     # Keep track of the preference order of each reffed object, by type
     prefs = defaultdict(list)
     reffed = set()
 
-    for idx, sco in scos.items():
+    for idx, orig_sco in scos.items():
+        sco = json_normalize(orig_sco, flat_lists=False)
+
         # Put SCO at end of pref list
         prefs[sco['type']].append(idx)
 
         # Assign a STIX 2.1-style identifier
-        sid = stix21.makeid(sco, obs)
+        sid = stix21.makeid(orig_sco, obs)
+        orig_sco['id'] = sid
         sco['id'] = sid
         ref_map[idx] = sid
 
@@ -291,13 +296,19 @@ def flatten(obs):
 
     # Resolve 2.0-style refs to new style
     for obj in results:  # Includes SDOs, SCOs, and SROs
-        if obj['type'] == 'relationship':
+        if obj['type'] in ('__contains', 'relationship'):
             continue
-
+        invalid = []
         for prop, val in obj.items():
             if prop.endswith('_ref'):
-                ref = obj[prop]
-                obj[prop] = ref_map.get(val, ref)  #FIXME: if ref not in map?
+                if val not in ref_map:
+                    invalid.append(prop)  # Reference not found
+                else:
+                    obj[prop] = ref_map[val]
+
+        # Remove any unresolvable reference props
+        for prop in invalid:
+            del obj[prop]
 
         obj_type = obj['type']
         k = None
@@ -317,6 +328,7 @@ def flatten(obs):
                     break
 
     del obs['objects']
+    results.append(json_normalize(obs, flat_lists=False))
 
     return results
 
