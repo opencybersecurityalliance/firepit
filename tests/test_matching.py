@@ -39,6 +39,21 @@ def test_like(one_event_bundle, tmpdir):
     assert len(s) == 1
 
 
+def test_like_regkey(regkey_bundle, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', regkey_bundle)
+
+    # Match using STIX pattern and LIKE operator
+    store.extract(
+        'x',
+        'windows-registry-key',
+        'q1',
+        r"[windows-registry-key:key LIKE '%\\Microsoft\\Windows\\CurrentVersion\\Run%']",
+    )
+    x = store.lookup('x')
+    assert len(x) == 1
+
+
 def test_matches(one_event_bundle, tmpdir):
     store = tmp_storage(tmpdir)
     store.cache('q1', one_event_bundle)
@@ -48,7 +63,7 @@ def test_matches(one_event_bundle, tmpdir):
         'x',
         'artifact',
         'q1',
-        r"[artifact:payload_bin MATCHES '(Ing|E)ressInterface=ethernet1/\d']",
+        r"[artifact:payload_bin MATCHES '(Ing|E)ressInterface=ethernet1/\\d']",
     )
     x = store.lookup('x')
     assert len(x) == 1
@@ -75,3 +90,45 @@ def test_matches_regkey(regkey_bundle, tmpdir):
     )
     x = store.lookup('x')
     assert len(x) == 1
+
+
+def test_matches_commandline_literal_dot(ccoe_bundle, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [ccoe_bundle])
+
+    store.extract(
+        'procs',
+        'process',
+        'q1',
+        r"[process:command_line MATCHES '^C:\\\\WINDOWS\\\\system32\\\\services\\.exe$']"
+    )
+    procs = store.lookup('procs')
+    assert len(procs) == 2
+
+
+def test_equal_commandline_backslash(ccoe_bundle, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [ccoe_bundle])
+
+    store.extract(
+        'procs',
+        'process',
+        'q1',
+        r"[process:command_line = 'C:\\WINDOWS\\system32\\services.exe']"
+    )
+    procs = store.lookup('procs')
+    assert len(procs) == 2
+
+
+def test_like_commandline_apostrophe(ccoe_bundle, tmpdir):
+    store = tmp_storage(tmpdir)
+    store.cache('q1', [ccoe_bundle])
+
+    store.extract(
+        'procs',
+        'process',
+        'q1',
+        r"[process:command_line LIKE '%DownloadString(\'%\')%']"
+    )
+    procs = store.lookup('procs')
+    assert len(procs) == 5

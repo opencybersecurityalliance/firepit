@@ -1,0 +1,70 @@
+{
+    "type": "bundle",
+    "id": "bundle--6c4e804b-fe9e-4dc8-9099-413c0846693c",
+    "spec_version": "2.0",
+    "objects": [
+        {
+            "type": "identity",
+            "identity_class": "program",
+            "name": "woodchipper",
+            "id": "identity--36eb32d3-16f9-4abb-9d21-3639f3a2934c",
+            "created": "2022-08-17T19:05:01.038Z",
+            "modified": "2022-08-17T19:05:01.038Z"
+        },
+        {
+            "type": "observed-data",
+            "id": "observed-data--fd229136-95c0-420d-a36d-865ba7490de3",
+            "created_by_ref": "identity--36eb32d3-16f9-4abb-9d21-3639f3a2934c",
+            "created": "2022-08-17T19:05:06.053Z",
+            "modified": "2022-08-17T19:05:06.053Z",
+            "number_observed": 1,
+            "first_observed": "2020-09-04T07:08:01.140Z",
+            "last_observed": "2020-09-04T07:08:01.140Z",
+            "objects": {
+                "0": {
+                    "type": "x-oca-event",
+                    "module": "Microsoft-Windows-Sysmon/Operational",
+                    "provider": "Microsoft-Windows-Sysmon",
+                    "code": 7,
+                    "action": "Image loaded",
+                    "category": "Image loaded (rule: ImageLoad)",
+                    "host_ref": "1",
+                    "process_ref": "2"
+                },
+                "1": {
+                    "type": "x-oca-asset",
+                    "hostname": "WORKSTATION5.example.com"
+                },
+                "2": {
+                    "type": "process",
+                    "pid": 3200,
+                    "x_unique_id": "{3ddc5665-e7d0-5f51-4f00-000000000500}",
+                    "name": "runme.exe",
+                    "binary_ref": "3",
+                    "extensions": {
+                        "windows-service-ext": {
+			    "service_name": "MyService",
+                            "service_dll_refs": [
+                                "5"
+                            ]
+                        }
+                    }
+                },
+                "3": {
+                    "type": "file",
+                    "name": "runme.exe",
+                    "parent_directory_ref": "4"
+                },
+                "4": {
+                    "type": "directory",
+                    "path": "C:\\tmp"
+                },
+                "5": {
+                    "type": "file",
+                    "name": "lib.dll",
+                    "parent_directory_ref": "4"
+                }
+            }
+        }
+    ]
+}

@@ -164,10 +164,10 @@ class RecordList:
         self.reset()
 
     def reset(self):
-        self.records = {} if self.id_idx else []
+        self.records = {} if self.id_idx is not None else []
 
     def append(self, record):
-        if self.id_idx:
+        if self.id_idx is not None:
             rec_id = record[self.id_idx]
             if rec_id in self.records:
                 # Update record instead
@@ -181,7 +181,7 @@ class RecordList:
             self.records.append(record)
 
     def __iter__(self):
-        if self.id_idx:
+        if self.id_idx is not None:
             yield from self.records.values()
         else:
             yield from self.records
