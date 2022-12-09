@@ -326,11 +326,11 @@ def is_file_event(event_id):
     return event_id in {6, 7, 9, 11, 15}
 
 
-def split_hash(hash_string: str):
+def split_hash(hash_string: str, prefix: str, tag: str = ''):
     token_dict = {
-        "SHA1=": "process:binary_ref.hashes.'SHA-1'",
-        "MD5=": "process:binary_ref.hashes.MD5",
-        "SHA256=": "process:binary_ref.hashes.'SHA-256'"
+        "SHA1=": f"{prefix}hashes.'SHA-1'{tag}",
+        "MD5=": f"{prefix}hashes.MD5{tag}",
+        "SHA256=": f"{prefix}hashes.'SHA-256'{tag}"
     }
     hashes = []
     for hstr in hash_string.split(','):
@@ -338,6 +338,18 @@ def split_hash(hash_string: str):
             if hash_token in hstr:
                 hashes += [(token_dict[hash_token], hstr[len(hash_token):])]
     return hashes
+
+
+def split_image_hash(hash_string: str):
+    return split_hash(hash_string, 'process:binary_ref.')
+
+
+def split_file_hash(hash_string: str):
+    return split_hash(hash_string, 'file:')
+
+
+def split_loaded_hash(hash_string: str):
+    return split_hash(hash_string, 'file:', '#loaded')
 
 
 def split_image(abs_name: str, prefix='process:'):
@@ -360,6 +372,15 @@ def split_image_loaded(abs_name: str):
     return [
         ('file:name#loaded', name),
         ('file:parent_directory_ref.path#loaded', path)
+    ]
+
+
+def split_file_path(abs_name: str, prefix='file:'):
+    name = ntpath.basename(abs_name)
+    path = ntpath.dirname(abs_name)
+    return [
+        (prefix + 'name', name),
+        (prefix + 'parent_directory_ref.path', path)
     ]
 
 
@@ -416,7 +437,7 @@ windows_mapping = {
         #"UserID": "process:creator_user_ref.user_id",
         #"User": "process:creator_user_ref.account_login",
         "User": "process:creator_user_ref.user_id",
-        "Hashes": split_hash,
+        "Hashes": split_image_hash,
     },
     3: {
         "UtcTime": ["first_observed", "last_observed"],
@@ -442,7 +463,14 @@ windows_mapping = {
         "ProcessId": "process:pid",
         "ProcessGuid": "process:x_unique_id",
         "CommandLine": ["process:command_line"],
-        "Hashes": split_hash,
+        "Hashes": split_loaded_hash,
+    },
+    11: {
+        "UtcTime": ["first_observed", "last_observed"],
+        "Image": split_image,
+        "ProcessId": "process:pid",
+        "ProcessGuid": "process:x_unique_id",
+        "TargetFilename": split_file_path,
     },
     12: {
         "UtcTime": ["first_observed", "last_observed"],
