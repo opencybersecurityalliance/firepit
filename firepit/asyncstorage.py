@@ -14,7 +14,8 @@ import pandas as pd
 import ujson
 from firepit import get_storage, pgstorage
 from firepit.deref import auto_deref_cached
-from firepit.exceptions import InvalidAttr, InvalidStixPath, UnknownViewname
+from firepit.exceptions import (InvalidAttr, InvalidStixPath, UnknownViewname,
+                                SessionNotFound)
 from firepit.pgstorage import (CHECK_FOR_COMMON_SCHEMA,
                                CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
                                LIKE_BIN, MATCH_BIN, MATCH_FUN, SUBNET_FUN,
@@ -67,6 +68,7 @@ class AsyncStorage:
                 await self.conn.execute(LIKE_BIN)
                 await self.conn.execute(SUBNET_FUN)
 
+        #TODO: fail if it already exists
         await self.conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.session_id}"')
         await self.conn.execute(f'SET search_path TO "{self.session_id}", firepit_common')
 
@@ -85,6 +87,7 @@ class AsyncStorage:
         logger.debug('Attaching to storage for session %s', self.session_id)
         self.conn = await asyncpg.connect(self.connstring)
         await self.conn.execute(f'SET search_path TO "{self.session_id}", firepit_common')
+        #TODO: fail if it doesn't exist
 
     async def cache(self,
                     query_id: str,
@@ -164,8 +167,11 @@ class AsyncStorage:
 
     async def delete(self):
         """Delete ALL data in this store"""
-        stmt = (f'DROP SCHEMA "{self.session_id}" CASCADE')
-        await self.conn.execute(stmt)
+        try:
+            stmt = (f'DROP SCHEMA "{self.session_id}" CASCADE')
+            await self.conn.execute(stmt)
+        except asyncpg.exceptions.InvalidSchemaNameError as e:
+            raise SessionNotFound(self.session_id) from e
 
     async def set_appdata(self, viewname, data):
         """Attach app-specific data to a viewname"""

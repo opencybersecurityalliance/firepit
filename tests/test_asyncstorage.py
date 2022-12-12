@@ -1,11 +1,10 @@
-import asyncio
 import os
 import pytest
 from urllib.parse import urlparse
 
-import asyncpg
 from firepit.asyncstorage import AsyncStorage
 from firepit.asyncstorage import SyncWrapper
+from firepit.exceptions import SessionNotFound
 
 
 async def async_storage(tmpdir, clear=True):
@@ -23,7 +22,7 @@ async def async_storage(tmpdir, clear=True):
         # Clear out previous test session
         try:
             await store.delete()
-        except asyncpg.exceptions.InvalidSchemaNameError as e:
+        except SessionNotFound as e:
             pass # nothing to delete
         await store.create()
 
