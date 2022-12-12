@@ -13,7 +13,7 @@ import pandas as pd
 
 import ujson
 from firepit import get_storage, pgstorage
-from firepit.deref import auto_deref
+from firepit.deref import auto_deref_cached
 from firepit.exceptions import InvalidAttr, InvalidStixPath, UnknownViewname
 from firepit.pgstorage import (CHECK_FOR_COMMON_SCHEMA,
                                CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
@@ -23,8 +23,7 @@ from firepit.props import parse_prop, prop_metadata
 from firepit.query import Column, Limit, Offset, Order, Projection, Query
 from firepit.splitter import RecordList, shorten_extension_name
 from firepit.sqlstorage import (DB_VERSION, SqlStorage, _format_query,
-                                _get_col_dict, _make_aggs, _transform,
-                                get_path_joins)
+                                _make_aggs, _transform, get_path_joins)
 from firepit.validate import validate_name, validate_path
 
 logger = logging.getLogger(__name__)
@@ -288,8 +287,9 @@ class AsyncStorage:
             qry.append(Projection(proj))
         else:
             if not col_dict:
-                col_dict = _get_col_dict(self)
-            joins, proj = auto_deref(col_dict, viewname, self.types())
+                col_dict = await self._get_col_dict()
+            dbcols = await self.columns(viewname)
+            joins, proj = auto_deref_cached(viewname, dbcols, col_dict)
             if joins:
                 qry.extend(joins)
             if proj:
@@ -359,11 +359,21 @@ class AsyncStorage:
                 await self._new_name(viewname, sco_type)
 
     async def _is_sql_view(self, name):
-        viewdef = self.conn.fetchone("SELECT definition"
-                                     " FROM pg_views"
-                                     " WHERE schemaname = %s"
-                                     " AND viewname = %s", self.session_id, name)
+        viewdef = await self.conn.fetchrow(
+            "SELECT definition"
+            " FROM pg_views"
+            " WHERE schemaname = $1"
+            " AND viewname = $2",
+            self.session_id, name)
         return viewdef is not None
+
+    async def _get_col_dict(self):
+        q = Query('__columns')
+        col_dict = defaultdict(list)
+        results = await self.run_query(q)
+        for result in results:
+            col_dict[result['otype']].append(result['path'])
+        return col_dict
 
 
 class AsyncSplitWriter:
@@ -466,8 +476,7 @@ class AsyncSplitWriter:
                 logger.debug('Added new type %s', obj_type)
             except (asyncpg.exceptions.DuplicateTableError,
                     asyncpg.exceptions.UniqueViolationError,
-                    asyncpg.exceptions.DuplicateObjectError) as e:
-                logger.error('TEMP: %s', e)
+                    asyncpg.exceptions.DuplicateObjectError):
                 logger.debug('Failed to add %s; refreshing schemas', obj_type)
                 # Refresh schemas
                 loaded_schema = await self._load_schema(obj_type)
@@ -598,12 +607,14 @@ class AsyncSqlWriter:
         logger.debug('Writing %d %s objects (%d props)', len(records), obj_type, len(schema))
         tablename = f'{self.prefix}{obj_type}'
 
+        # Load records into dataframe and do type conversions as required
+        df = pd.DataFrame(records)
+        await self.write_df(tablename, df, query_id, schema)
+
+    async def write_df(self, tablename, df, query_id, schema):
         # Generate random tmp table name
         r = randrange(0, 1000000)
         tmp = f'tmp{r}_{tablename}'
-
-        # Load records into dataframe and do type conversions as required
-        df = pd.DataFrame(records)
         columns = df.columns
         for col in columns:
             if col not in schema:
@@ -672,7 +683,7 @@ class AsyncSqlWriter:
             try:
                 await self.conn.execute(stmt)
             except asyncpg.exceptions.CardinalityViolationError as e:
-                logger.error('CardinalityViolationError for %s', obj_type)
+                logger.error('CardinalityViolationError for %s', tablename)
                 logger.critical('%s', e, exc_info=e)
                 raise e
 
@@ -977,6 +988,9 @@ class SyncWrapper(AsyncStorage):
     async def lookup(self, viewname, cols="*", limit=None, offset=None, col_dict=None):
         """Get the value of `viewname`"""
         return self.store.lookup(viewname, cols, limit, offset, col_dict)
+
+    async def _is_sql_view(self, name):
+        return self.store._is_sql_view(name)
 
 
 async def get_async_storage(store: SqlStorage) -> SyncWrapper:
