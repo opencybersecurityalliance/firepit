@@ -304,6 +304,11 @@ def to_action_code(event_id):
     ]
 
 
+def to_cat_list(category):
+    value = category if isinstance(category, list) else [category]
+    return [('x-oca-event:category', value)]
+
+
 def to_payload_bin(value):
     return [
         ('artifact:payload_bin', base64.b64encode(value.encode()).decode('ascii'))
@@ -596,7 +601,7 @@ class SdsMapper(Mapper):
         "SourceName": "x-oca-event:provider",
         "Hostname": "x-oca-asset:hostname",
         "EventID": to_action_code,
-        "Category": "x-oca-event:category",
+        "Category": to_cat_list,  # "x-oca-event:category" is defined to be a list
         "Message": lambda x: SdsMapper.enhanced_action(x),
         #"Message": to_payload_bin,
         "ProcessName": split_image,  # At least some events use this instead of Image
