@@ -23,7 +23,7 @@ requirements = [
 
 setup_requirements = ['pytest-runner', 'wheel']
 
-test_requirements = ['pytest>=3', ]
+test_requirements = ['pytest>=3', 'asyncpg']
 
 setup(
     author="IBM Security",
