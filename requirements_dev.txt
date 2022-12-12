@@ -16,3 +16,4 @@ safety
 pyinstrument
 
 asyncpg
+pandas
