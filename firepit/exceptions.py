@@ -49,3 +49,11 @@ class UnexpectedError(Exception):
 class DatabaseMismatch(Exception):
     def __init__(self, dbversion, expected):
         super().__init__(f'got version {dbversion}; expected {expected}')
+
+
+class SessionNotFound(Exception):
+    pass
+
+
+class SessionExists(Exception):
+    pass
