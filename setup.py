@@ -18,7 +18,7 @@ requirements = [
     'psycopg2-binary',
     'tabulate',
     'typer',
-    'ujson<=5.5.0'
+    'ujson<=5.4.0'
 ]
 
 setup_requirements = ['pytest-runner', 'wheel']
