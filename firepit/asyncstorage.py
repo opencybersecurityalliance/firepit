@@ -4,6 +4,7 @@ Async interface using asyncpg
 """
 
 import logging
+import os
 import re
 from collections import OrderedDict, defaultdict
 from random import randrange
@@ -15,7 +16,7 @@ import ujson
 from firepit import get_storage, pgstorage
 from firepit.deref import auto_deref_cached
 from firepit.exceptions import (InvalidAttr, InvalidStixPath, UnknownViewname,
-                                SessionNotFound)
+                                SessionExists, SessionNotFound)
 from firepit.pgstorage import (CHECK_FOR_COMMON_SCHEMA,
                                CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
                                LIKE_BIN, MATCH_BIN, MATCH_FUN, SUBNET_FUN,
@@ -897,6 +898,7 @@ class SyncWrapper(AsyncStorage):
                  session_id: str = None,
                  store: SqlStorage = None):
         if store:
+            logger.debug('Wrapping storage object %s', store)
             self.store = store
             self.dialect = self.store.dialect
         else:
@@ -908,9 +910,12 @@ class SyncWrapper(AsyncStorage):
         """
         Create a new "session" (SQLite3 file).  Fail if it already exists.
         """
-        #TODO: Fail if it already exists
+        # Fail if it already exists
+        if os.path.exists(self.connstring):
+            raise SessionExists(self.connstring)
         logger.debug('Creating storage for session %s', self.session_id)
         self.store = get_storage(self.connstring, self.session_id)
+        self.conn = self.store.connection
         self.placeholder = self.store.placeholder
         self.dialect = self.store.dialect
 
@@ -999,6 +1004,6 @@ class SyncWrapper(AsyncStorage):
         return self.store._is_sql_view(name)
 
 
-async def get_async_storage(store: SqlStorage) -> SyncWrapper:
+async def get_async_storage(store: SqlStorage) -> SyncWrapper:  #FIXME: why is this async?
     """Wrap a sync SqlStorage object with an async interface"""
     return SyncWrapper(store=store)

@@ -28,6 +28,9 @@ ID_PROPS = {
     'user-account': ('account_type', 'user_id', 'account_login'),
     'windows-registry-keys': ('key', 'values'),
     'x509-certificate': ('hashes', 'serial_number'),
+
+    # Common extensions
+    'x-oca-asset': ('host_id', 'device_id', 'name', 'hostname'),
 }
 
 PROCESS_UNIQUE_ID_PROPS = [

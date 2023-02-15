@@ -88,7 +88,7 @@ def format_val(sco_type, prop, val):
         except ValueError:
             result = int(val, 16)
     elif prop == 'protocols':  # HACKY
-        result = [val]
+        result = [val] if not isinstance(val, list) else val
     elif prop == 'key':
         result = val
         for abbrev, full in REG_HIVE_MAP.items():
@@ -118,7 +118,8 @@ def set_obs_prop(observable, path, val, scos, key):
         scos[ref_key] = other
         if ref_name in observable:
             refs = observable[ref_name]
-            refs.append(ref_key)
+            if ref_key not in refs:
+                refs.append(ref_key)
         else:
             refs = [None for i in range(int(idx) + 1)]
             refs[int(idx)] = ref_key
