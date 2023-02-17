@@ -287,7 +287,6 @@ def test_translate():
     assert df[lo_col].iloc[2] == '2023-02-01T18:26:35.003000Z'
 
 
-@pytest.mark.skip('Need to fix AsyncWrapper')
 @pytest.mark.asyncio
 async def test_ingest(tmpdir):
     df = pd.DataFrame(

@@ -9,11 +9,11 @@ import uuid
 from collections import OrderedDict, defaultdict
 from datetime import datetime
 
-import asyncpg
 import pandas as pd
 import ujson
 
-from firepit.asyncstorage import AsyncSqlWriter, AsyncStorage
+from firepit.asyncstorage import AsyncStorage
+from firepit.exceptions import DuplicateTable
 from firepit.props import KNOWN_PROPS
 from firepit.raft import json_normalize
 from firepit.splitter import shorten_extension_name
@@ -341,7 +341,7 @@ def translate(
                         # Need to properly sort them
                         df[txf_col] = df[txf_col].apply(_to_protocols)
                     else:
-                        df[txf_col] = df[txf_col].apply(txf.transform)
+                        df[txf_col] = df[txf_col].dropna().apply(txf.transform)
                 except AttributeError as e:
                     logger.error("%s", e, exc_info=e)
                     #TODO: what do we do here?
@@ -458,7 +458,7 @@ async def ingest(
 ):
     """Ingest translated DataFrame into firepit async storage"""
     logger.debug('df.columns = %s', df.columns)
-    writer = AsyncSqlWriter(store.conn, session_id=store.session_id)
+    writer = store
 
     # First insert the identity object
     await writer.write_records('identity', [identity], IDENTITY_SCHEMA, False, query_id)
@@ -482,7 +482,10 @@ async def ingest(
             continue
         pd_col = df[col]
         index = pd_col.first_valid_index()
-        value = pd_col.loc[index]
+        if index is not None:
+            value = pd_col.loc[index]
+        else:
+            value = None
         meta = KNOWN_PROPS.get(obj_type, {}).get(obj_attr)
         if meta:
             dtype = meta['dtype']
@@ -546,7 +549,7 @@ async def ingest(
             try:
                 await writer.new_type(obj_type, schema)
                 old_schemas[obj_type] = schema
-            except asyncpg.exceptions.DuplicateTableError:
+            except DuplicateTable:
                 logger.debug('Duplicate table "%s"', obj_type)
         else:
             # check if we need to alter table using writer.new_property
@@ -583,7 +586,7 @@ async def ingest(
             if not created_table:
                 try:
                     await writer.new_type('__reflist', REFLIST_SCHEMA)  # Shouldn't really have to do this
-                except asyncpg.exceptions.DuplicateTableError:
+                except DuplicateTable:
                     pass
                 created_table = True
             # Create new df with obj id and reflist column

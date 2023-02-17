@@ -170,6 +170,9 @@ class SQLiteStorage(SqlStorage):
             elif e.args[0].endswith("syntax error"):
                 # We see this on SQL injection attempts
                 raise UnexpectedError(e.args[0]) from e
+            elif e.args[0].endswith("table") and e.args[0].endswith(" already exists"):
+                tablename = e.args[0].split('"')[1]
+                raise DuplicateTable(tablename) from e
             else:
                 raise e  # See if caller wants special behavior
         return cursor

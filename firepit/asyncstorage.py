@@ -16,7 +16,7 @@ import ujson
 from firepit import get_storage, pgstorage
 from firepit.deref import auto_deref_cached
 from firepit.exceptions import (InvalidAttr, InvalidStixPath, UnknownViewname,
-                                SessionExists, SessionNotFound)
+                                SessionExists, SessionNotFound, DuplicateTable)
 from firepit.pgstorage import (CHECK_FOR_COMMON_SCHEMA,
                                CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
                                LIKE_BIN, MATCH_BIN, MATCH_FUN, SUBNET_FUN,
@@ -25,7 +25,7 @@ from firepit.props import parse_prop, prop_metadata
 from firepit.query import Column, Limit, Offset, Order, Projection, Query
 from firepit.splitter import RecordList, shorten_extension_name
 from firepit.sqlstorage import (DB_VERSION, SqlStorage, _format_query,
-                                _make_aggs, _transform, get_path_joins)
+                                _make_aggs, _transform, get_path_joins, infer_type)
 from firepit.validate import validate_name, validate_path
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,12 @@ class AsyncStorage:
         self.connstring = connstring
         self.session_id = session_id
         self.conn = None
+
+        # SQL data type inference function (database-specific)
+        self.infer_type = pgstorage._infer_type
+
+        # SQL column name function (database-specific)
+        self.shorten = shorten_extension_name
 
     async def create(self, ssl_context=None):
         """
@@ -96,8 +102,7 @@ class AsyncStorage:
         """
         Ingest a single, in-memory STIX bundle, labelled with `query_id`.
         """
-        writer = AsyncSqlWriter(self.conn, session_id=self.session_id)
-        splitter = AsyncSplitWriter(writer, query_id=str(query_id))
+        splitter = AsyncSplitWriter(self, query_id=str(query_id))
         await splitter.init()
 
         for obj in _transform(bundle):
@@ -382,6 +387,146 @@ class AsyncStorage:
             col_dict[result['otype']].append(result['path'])
         return col_dict
 
+    # The former AsyncSqlWriter interface
+    async def _replace(self, cursor, tablename, obj, schema):
+        colnames = schema.keys()
+        valnames = ', '.join([f'"{x}"' for x in colnames])
+        placeholders = ', '.join(get_placeholders(len(obj)))
+        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
+        if 'id' in colnames:
+            stmt += ' ON CONFLICT (id) DO '
+            valnames = [f'"{col}" = EXCLUDED."{col}"' for col in colnames if col != 'id']
+            valnames = ', '.join(valnames)
+            stmt += f'UPDATE SET {valnames};'
+        tmp = [ujson.dumps(value, ensure_ascii=False)
+               if isinstance(value, list) else value for value in obj]
+        values = tuple(tmp)
+        logger.debug('_replace: "%s" values %s', stmt, values)
+        await cursor.execute(stmt, values)
+
+    async def new_type(self, obj_type, schema):
+        # Same as base class, but disable WAL
+        stmt = f'CREATE UNLOGGED TABLE "{obj_type}" ('
+        stmt += ','.join([f'"{colname}" {coltype}' for colname, coltype in schema.items()])
+        stmt += ')'
+        logger.debug('new_table: %s', stmt)
+        try:
+            await self.conn.execute(stmt)
+        except asyncpg.exceptions.DuplicateTableError as e:
+            raise DuplicateTable(obj_type) from e
+
+    async def new_property(self, obj_type, prop_name, prop_type):
+        stmt = f'ALTER TABLE "{obj_type}" ADD COLUMN "{prop_name}" {prop_type}'
+        logger.debug('new_property: %s', stmt)
+        await self.conn.execute(stmt)
+
+    async def write_records(self, obj_type, records, schema, replace, query_id):
+        logger.debug('Writing %d %s objects (%d props)', len(records), obj_type, len(schema))
+
+        # Load records into dataframe and do type conversions as required
+        df = pd.DataFrame(records)
+        await self.write_df(obj_type, df, query_id, schema)
+
+    async def write_df(self, tablename, df, query_id, schema):
+        # Generate random tmp table name
+        r = randrange(0, 1000000)
+        tmp = f'tmp{r}_{tablename}'
+        columns = df.columns
+        for col in columns:
+            if col not in schema:
+                #df = df.drop(columns=col)
+                continue
+            stype = schema[col].lower()
+            if stype == 'text':
+                df[col] = df[col].astype('string')
+            elif stype == 'bigint':
+                df[col] = df[col].astype('Int64')
+            elif stype == 'integer':
+                df[col] = df[col].astype('Int32')
+            elif stype == 'boolean':
+                df[col] = df[col].astype('boolean')
+
+        #TODO: if no id column, use drop_duplicates?
+
+        # Not sure how it could have survived, but it did for "__columns"  FIXME
+        if 'type' in df.columns:
+            df = df.drop(columns='type')
+
+        colnames = list(df.columns)  #schema.keys())
+        quoted_colnames = [f'"{x}"' for x in colnames]
+        valnames = ', '.join(quoted_colnames)
+
+        # Replace NaNs with None, since asyncpg won't do it
+        # Then convert back to "record" format
+        try:
+            # No need to reorder if we create tmp table off our columns only
+            records = df.replace({pd.NA: None}).to_records(index=False)
+        except KeyError as e:
+            logger.error('df.columns = %s', df.columns)
+            logger.error('%s', e, exc_info=e)
+            raise e
+
+        async with self.conn.transaction():
+            # Create a temp table first
+            s = ', '.join([f'"{name}" {schema[name]}' for name in colnames])
+            stmt = f'CREATE TEMP TABLE "{tmp}" ({s})'
+            logger.debug('%s', stmt)
+            await self.conn.execute(stmt)
+
+            # Copy the records into the temp table
+            try:
+                await self.conn.copy_records_to_table(tmp, records=records)
+            except asyncpg.exceptions.BadCopyFileFormatError as e:
+                # Log and re-raise
+                logger.critical('%s', e, exc_info=e)
+                raise e
+
+            # Now SELECT from temp table to real table
+            stmt = (f'INSERT INTO "{tablename}" ({valnames})'
+                    f' SELECT {valnames} FROM "{tmp}"')
+            if 'id' in colnames:
+                stmt += ' ORDER BY id'  # Avoid deadlocks
+                action = 'NOTHING'
+                if tablename != 'identity':
+                    excluded = _get_excluded(colnames, tablename)
+                    if excluded:
+                        action = f'UPDATE SET {excluded}'
+                stmt += f'  ON CONFLICT (id) DO {action}'
+            else:
+                stmt += f' ORDER BY "{colnames[0]}"'  # Any port in a storm...
+                stmt += ' ON CONFLICT DO NOTHING'
+            logger.debug('upsert: %s', stmt)
+            try:
+                await self.conn.execute(stmt)
+            except asyncpg.exceptions.CardinalityViolationError as e:
+                logger.error('CardinalityViolationError for %s', tablename)
+                logger.critical('%s', e, exc_info=e)
+                raise e
+
+            # Don't need the temp table anymore
+            await self.conn.execute(f'DROP TABLE "{tmp}"')
+
+        if query_id and 'id' in colnames:
+            # Now add to query table as well
+            idx = colnames.index('id')
+            qobjs = [(obj[idx], query_id) for obj in records]
+            await self.conn.copy_records_to_table('__queries', records=qobjs)
+
+    async def properties(self, obj_type=None):
+        if obj_type:
+            stmt = ("SELECT column_name AS name, data_type AS type"
+                    " FROM information_schema.columns"
+                    " WHERE table_schema = $1"
+                    " AND table_name = $2")
+            rows = await self.fetch(stmt, self.session_id, obj_type)
+            logger.debug('Schema "%s" rows: %s', obj_type, rows)
+        else:
+            stmt = ("SELECT table_name AS table, column_name AS name, data_type AS type"
+                    " FROM information_schema.columns"
+                    " WHERE table_schema = $1")
+            rows = await self.fetch(stmt, self.session_id)
+        return [dict(row) for row in rows]
+
 
 class AsyncSplitWriter:
     """
@@ -481,7 +626,8 @@ class AsyncSplitWriter:
             try:
                 await self.writer.new_type(obj_type, schema)
                 logger.debug('Added new type %s', obj_type)
-            except (asyncpg.exceptions.DuplicateTableError,
+            except (DuplicateTable,
+                    asyncpg.exceptions.DuplicateTableError,
                     asyncpg.exceptions.UniqueViolationError,
                     asyncpg.exceptions.DuplicateObjectError):
                 logger.debug('Failed to add %s; refreshing schemas', obj_type)
@@ -530,7 +676,6 @@ class AsyncSplitWriter:
                     raise e
 
 
-
 # adapted from SqlStorage
 def _get_excluded(colnames, tablename):
     text_min = 'LEAST'
@@ -548,191 +693,6 @@ def _get_excluded(colnames, tablename):
         else:
             excluded.append(f'"{col}" = COALESCE(EXCLUDED."{col}", "{tablename}"."{col}")')
     return ', '.join(excluded)
-
-
-class AsyncSqlWriter:
-    """
-    Writes STIX objects to a SQL DB, one table per type
-    """
-
-    def __init__(self,
-                 conn,
-                 prefix=None,
-                 session_id=None,
-                 **kwargs):
-        self.dialect = 'postgresql'
-        self.conn = conn  # MUST be asyncpg connection
-
-        if prefix:
-            self.prefix = prefix
-        else:
-            self.prefix = ''
-
-        self.session_id = session_id
-
-        # SQL data type inference function (database-specific)
-        self.infer_type = pgstorage._infer_type
-
-        # SQL column name function (database-specific)
-        self.shorten = shorten_extension_name
-
-        self.schemas = defaultdict(OrderedDict)
-        self.kwargs = kwargs
-
-    async def _replace(self, cursor, tablename, obj, schema):
-        colnames = schema.keys()
-        valnames = ', '.join([f'"{x}"' for x in colnames])
-        placeholders = ', '.join(get_placeholders(len(obj)))
-        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({placeholders})'
-        if 'id' in colnames:
-            stmt += ' ON CONFLICT (id) DO '
-            valnames = [f'"{col}" = EXCLUDED."{col}"' for col in colnames if col != 'id']
-            valnames = ', '.join(valnames)
-            stmt += f'UPDATE SET {valnames};'
-        tmp = [ujson.dumps(value, ensure_ascii=False)
-               if isinstance(value, list) else value for value in obj]
-        values = tuple(tmp)
-        logger.debug('_replace: "%s" values %s', stmt, values)
-        await cursor.execute(stmt, values)
-
-    async def new_type(self, obj_type, schema):
-        tablename = f'{self.prefix}{obj_type}'
-        # Same as base class, but disable WAL
-        stmt = f'CREATE UNLOGGED TABLE "{tablename}" ('
-        stmt += ','.join([f'"{colname}" {coltype}' for colname, coltype in schema.items()])
-        stmt += ')'
-        logger.debug('new_table: %s', stmt)
-        await self.conn.execute(stmt)
-
-    async def new_property(self, obj_type, prop_name, prop_type):
-        tablename = f'{self.prefix}{obj_type}'
-        stmt = f'ALTER TABLE "{tablename}" ADD COLUMN "{prop_name}" {prop_type}'
-        logger.debug('new_property: %s', stmt)
-        await self.conn.execute(stmt)
-
-    async def write_records(self, obj_type, records, schema, replace, query_id):
-        logger.debug('Writing %d %s objects (%d props)', len(records), obj_type, len(schema))
-        tablename = f'{self.prefix}{obj_type}'
-
-        # Load records into dataframe and do type conversions as required
-        df = pd.DataFrame(records)
-        await self.write_df(tablename, df, query_id, schema)
-
-    async def write_df(self, tablename, df, query_id, schema):
-        # Generate random tmp table name
-        r = randrange(0, 1000000)
-        tmp = f'tmp{r}_{tablename}'
-        columns = df.columns
-        for col in columns:
-            if col not in schema:
-                #df = df.drop(columns=col)
-                continue
-            stype = schema[col].lower()
-            if stype == 'text':
-                df[col] = df[col].astype('string')
-            elif stype == 'bigint':
-                df[col] = df[col].astype('Int64')
-            elif stype == 'integer':
-                df[col] = df[col].astype('Int32')
-            elif stype == 'boolean':
-                df[col] = df[col].astype('boolean')
-
-        #TODO: if no id column, use drop_duplicates?
-
-        # Not sure how it could have survived, but it did for "__columns"  FIXME
-        if 'type' in df.columns:
-            df = df.drop(columns='type')
-
-        colnames = list(df.columns)  #schema.keys())
-        quoted_colnames = [f'"{x}"' for x in colnames]
-        valnames = ', '.join(quoted_colnames)
-
-        # Replace NaNs with None, since asyncpg won't do it
-        # Then convert back to "record" format
-        try:
-            # No need to reorder if we create tmp table off our columns only
-            records = df.replace({pd.NA: None}).to_records(index=False)
-        except KeyError as e:
-            logger.error('df.columns = %s', df.columns)
-            logger.error('%s', e, exc_info=e)
-            raise e
-
-        async with self.conn.transaction():
-            # Create a temp table first
-            s = ', '.join([f'"{name}" {schema[name]}' for name in colnames])
-            stmt = f'CREATE TEMP TABLE "{tmp}" ({s})'
-            logger.debug('%s', stmt)
-            await self.conn.execute(stmt)
-
-            # Copy the records into the temp table
-            try:
-                await self.conn.copy_records_to_table(tmp, records=records)
-            except asyncpg.exceptions.BadCopyFileFormatError as e:
-                # Log and re-raise
-                logger.critical('%s', e, exc_info=e)
-                raise e
-
-            # Now SELECT from temp table to real table
-            stmt = (f'INSERT INTO "{tablename}" ({valnames})'
-                    f' SELECT {valnames} FROM "{tmp}"')
-            if 'id' in colnames:
-                stmt += ' ORDER BY id'  # Avoid deadlocks
-                action = 'NOTHING'
-                if tablename != 'identity':
-                    excluded = _get_excluded(colnames, tablename)
-                    if excluded:
-                        action = f'UPDATE SET {excluded}'
-                stmt += f'  ON CONFLICT (id) DO {action}'
-            else:
-                stmt += f' ORDER BY "{colnames[0]}"'  # Any port in a storm...
-                stmt += ' ON CONFLICT DO NOTHING'
-            logger.debug('upsert: %s', stmt)
-            try:
-                await self.conn.execute(stmt)
-            except asyncpg.exceptions.CardinalityViolationError as e:
-                logger.error('CardinalityViolationError for %s', tablename)
-                logger.critical('%s', e, exc_info=e)
-                raise e
-
-            # Don't need the temp table anymore
-            await self.conn.execute(f'DROP TABLE "{tmp}"')
-
-        if query_id and 'id' in colnames:
-            # Now add to query table as well
-            idx = colnames.index('id')
-            qobjs = [(obj[idx], query_id) for obj in records]
-            await self.conn.copy_records_to_table('__queries', records=qobjs)
-
-    async def types(self, private=False):
-        #tables = self.store.types(private)
-        #return [_strip_prefix(table, self.prefix) for table in tables]
-        stmt = ("SELECT table_name FROM information_schema.tables"
-                " WHERE table_schema = $1 AND table_type != 'VIEW'"
-                "  EXCEPT SELECT name as table_name FROM __symtable")
-        rows = await self.conn.fetch(stmt, self.session_id)
-        if private:
-            tables = [i['table_name'] for i in rows]
-        else:
-            # Ignore names that start with 1 or 2 underscores
-            tables = [i['table_name'] for i in rows
-                      if not i['table_name'].startswith('_')]
-        return tables
-
-    async def properties(self, obj_type=None):
-        if obj_type:
-            tablename = f'{self.prefix}{obj_type}'
-            stmt = ("SELECT column_name AS name, data_type AS type"
-                    " FROM information_schema.columns"
-                    " WHERE table_schema = $1"
-                    " AND table_name = $2")
-            rows = await self.conn.fetch(stmt, self.session_id, tablename)
-            logger.debug('Schema "%s" rows: %s', tablename, rows)
-        else:
-            stmt = ("SELECT table_name AS table, column_name AS name, data_type AS type"
-                    " FROM information_schema.columns"
-                    " WHERE table_schema = $1")
-            rows = await self.conn.fetch(stmt, self.session_id)
-        return [dict(row) for row in rows]
 
 
 class AsyncRecordList(RecordList):
@@ -906,6 +866,9 @@ class SyncWrapper(AsyncStorage):
             self.placeholder = '?'
             self.dialect = 'sqlite3'
 
+        # SQL data type inference function (database-specific)
+        self.infer_type = infer_type
+
     async def create(self, ssl_context=None):
         """
         Create a new "session" (SQLite3 file).  Fail if it already exists.
@@ -1002,6 +965,47 @@ class SyncWrapper(AsyncStorage):
 
     async def _is_sql_view(self, name):
         return self.store._is_sql_view(name)
+
+    async def write_df(self, tablename, df, query_id, schema):
+        cursor = self.store.connection.cursor()  # TODO: need a context manager here?
+        objs = df.to_dict(orient='records')
+        for obj in objs:
+            self._write_one(cursor, tablename, obj, schema, query_id)
+        self.store.connection.commit()
+
+    def _write_one(self, cursor, tablename, obj, schema, query_id):
+        pairs = obj.items()
+        colnames = [i[0] for i in pairs if i != 'type']
+        excluded = self.store._get_excluded(colnames, tablename)
+        valnames = ', '.join([f'"{x}"' for x in colnames])
+        ph = self.store.placeholder
+        phs = ', '.join([ph] * len(colnames))
+        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({phs})'
+        if 'id' in colnames:
+            if excluded and tablename != 'observed-data':
+                action = f'UPDATE SET {excluded}'
+            else:
+                action = 'NOTHING'
+            stmt += f' ON CONFLICT (id) DO {action}'
+        else:
+            stmt += ' ON CONFLICT DO NOTHING'
+        values = tuple([ujson.dumps(i[1], ensure_ascii=False)
+                        if isinstance(i[1], list) else i[1] for i in pairs])
+        logger.debug('_upsert: "%s", %s', stmt, values)
+        cursor.execute(stmt, values)
+
+        if query_id and 'id' in colnames:
+            # Now add to query table as well
+            stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
+                    f' VALUES ({ph}, {ph})')
+            cursor.execute(stmt, (obj['id'], query_id))
+
+    #TODO: how is this different than columns?
+    async def properties(self, obj_type=None):
+        return self.store.schema(obj_type)
+
+    async def new_type(self, obj_type, schema):
+        self.store._create_table(obj_type, schema)
 
 
 async def get_async_storage(store: SqlStorage) -> SyncWrapper:  #FIXME: why is this async?
