@@ -15,5 +15,6 @@ bandit
 safety
 pyinstrument
 
+psycopg2-binary
 asyncpg
 pandas

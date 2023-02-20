@@ -25,8 +25,8 @@ setup_requirements = ['pytest-runner', 'wheel']
 test_requirements = ['pytest>=3',]
 
 extras_requirements = {
-    'pg': ['psycopg2-binary'],
-    'async': ['asyncpg']
+    'postgres': ['psycopg2-binary'],
+    'async-postgres': ['asyncpg']
 }
 
 setup(
