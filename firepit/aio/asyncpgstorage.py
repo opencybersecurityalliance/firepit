@@ -1,10 +1,4 @@
-"""
-EXPERIMENTAL
-Async interface using asyncpg
-"""
-
 import logging
-import os
 import re
 from collections import OrderedDict, defaultdict
 from random import randrange
@@ -13,29 +7,32 @@ import asyncpg
 import pandas as pd
 
 import ujson
-from firepit import get_storage, pgstorage
+from firepit.aio.asyncstorage import AsyncStorage
 from firepit.deref import auto_deref_cached
 from firepit.exceptions import (InvalidAttr, InvalidStixPath, UnknownViewname,
                                 SessionExists, SessionNotFound, DuplicateTable)
 from firepit.pgstorage import (CHECK_FOR_COMMON_SCHEMA,
                                CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
                                LIKE_BIN, MATCH_BIN, MATCH_FUN, SUBNET_FUN,
-                               _rewrite_view_def)
-from firepit.props import parse_prop, prop_metadata
+                               _rewrite_view_def, _infer_type)
 from firepit.query import Column, Limit, Offset, Order, Projection, Query
 from firepit.splitter import RecordList, shorten_extension_name
-from firepit.sqlstorage import (DB_VERSION, SqlStorage, _format_query,
-                                _make_aggs, _transform, get_path_joins, infer_type)
+from firepit.sqlstorage import (DB_VERSION, _format_query,
+                                _make_aggs, _transform)
 from firepit.validate import validate_name, validate_path
 
 logger = logging.getLogger(__name__)
+
+
+def get_storage(connstring, session_id):
+    return AsyncpgStorage(connstring, session_id)
 
 
 def get_placeholders(n):
     return [f'${i}' for i in range(1, n + 1)]
 
 
-class AsyncStorage:
+class AsyncpgStorage(AsyncStorage):
     class Placeholder:
         def __init__(self, offset=0):
             self.i = offset + 1
@@ -53,7 +50,7 @@ class AsyncStorage:
         self.conn = None
 
         # SQL data type inference function (database-specific)
-        self.infer_type = pgstorage._infer_type
+        self.infer_type = _infer_type
 
         # SQL column name function (database-specific)
         self.shorten = shorten_extension_name
@@ -231,14 +228,6 @@ class AsyncStorage:
         result = await self.conn.fetchrow(query, *args)
         return result
 
-    async def query(self, query, values=None):
-        logger.debug('Executing query: %s', query)
-        if values:
-            result = await self.fetch(query, *values)
-        else:
-            result = await self.fetch(query)
-        return [dict(r) for r in result]
-
     async def remove_view(self, viewname):
         """Remove view `viewname`"""
         validate_name(viewname)
@@ -320,11 +309,6 @@ class AsyncStorage:
             for result in results:
                 result['type'] = sco_type
         return results
-
-    async def path_joins(self, viewname, sco_type, column):
-        if not sco_type:
-            sco_type = await self.table_type(viewname)
-        return get_path_joins(viewname, sco_type, column)
 
     # "Private" API
     async def _get_view_def(self, viewname):
@@ -419,13 +403,6 @@ class AsyncStorage:
         stmt = f'ALTER TABLE "{obj_type}" ADD COLUMN "{prop_name}" {prop_type}'
         logger.debug('new_property: %s', stmt)
         await self.conn.execute(stmt)
-
-    async def write_records(self, obj_type, records, schema, replace, query_id):
-        logger.debug('Writing %d %s objects (%d props)', len(records), obj_type, len(schema))
-
-        # Load records into dataframe and do type conversions as required
-        df = pd.DataFrame(records)
-        await self.write_df(obj_type, df, query_id, schema)
 
     async def write_df(self, tablename, df, query_id, schema):
         # Generate random tmp table name
@@ -526,6 +503,19 @@ class AsyncStorage:
                     " WHERE table_schema = $1")
             rows = await self.fetch(stmt, self.session_id)
         return [dict(row) for row in rows]
+
+
+class AsyncRecordList(RecordList):
+    def __init__(self):
+        super().__init__(1)
+
+    def append(self, record):
+        rec_id = record.get('id', len(self.records))
+        if rec_id in self.records:
+            # Update record instead
+            self.records[rec_id].update(record)
+        else:
+            self.records[rec_id] = record
 
 
 class AsyncSplitWriter:
@@ -693,321 +683,3 @@ def _get_excluded(colnames, tablename):
         else:
             excluded.append(f'"{col}" = COALESCE(EXCLUDED."{col}", "{tablename}"."{col}")')
     return ', '.join(excluded)
-
-
-class AsyncRecordList(RecordList):
-    def __init__(self):
-        super().__init__(1)
-
-    def append(self, record):
-        rec_id = record.get('id', len(self.records))
-        if rec_id in self.records:
-            # Update record instead
-            self.records[rec_id].update(record)
-        else:
-            self.records[rec_id] = record
-
-
-class AsyncDBCache:
-    def __init__(self, store: AsyncStorage):
-        self.store = store
-        self.table_set = {'observed-data', 'identity'}  # Should always be present
-        self.type_set = set()
-        self.view_set = set()
-        self.col_dict = {}
-        self.schema_dict = {}
-        self.meta_dict = {}  # table -> column -> meta
-        #self._get_metadata()
-
-    async def _get_metadata(self):
-        """For backwards compat"""
-        return await self.get_metadata()
-
-    async def get_metadata(self):
-        q = Query('__columns')
-        results = await self.store.run_query(q)
-        for result in results:
-            otype = result['otype']
-            # Create entry for this table if necessary
-            if otype not in self.meta_dict:
-                self.meta_dict[otype] = {}
-            metadict = self.meta_dict[otype]
-            # Create entry for this column
-            metadict[result['shortname']] = result
-
-        # fill in self.col_dict and friends
-        for table, data in self.meta_dict.items():
-            self.table_set.add(table)
-            self.col_dict[table] = sorted(data.keys())
-
-        logger.debug('DBCache: Preload columns for "observed-data"')
-        for table in ('observed-data', 'identity'):  # Hacky
-            cols = set(await self.store.columns(table))
-            if table in self.col_dict:
-                old_cols = set(self.col_dict[table])
-                self.col_dict[table] = sorted(old_cols | cols)
-            else:
-                self.col_dict[table] = sorted(cols)
-            self.table_set.add(table)
-
-    async def tables(self):
-        if not self.table_set:
-            t = await self.store.tables()
-            self.table_set.update(t)
-        return list(self.table_set)
-
-    async def types(self):
-        if not self.type_set:
-            t = await self.store.types()
-            self.type_set.update(t)
-        return list(self.type_set)
-
-    async def views(self):
-        if not self.view_set:
-            t = await self.store.views()
-            self.view_set.update(t)
-        return list(self.view_set)
-
-    async def columns(self, table):
-        if table not in self.col_dict:
-            logger.debug('DBCache: fetching columns for "%s"', table)
-            cols = await self.store.columns(table)
-            self.col_dict[table] = cols
-        else:
-            logger.debug('DBCache: fetching columns for "%s" from cache', table)
-            cols = self.col_dict[table]
-        return cols
-
-    async def schema(self, table):
-        if table not in self.schema_dict:
-            logger.debug('DBCache: fetching schema for "%s"', table)
-            schema = await self.store.schema(table)
-            self.schema_dict[table] = schema
-        else:
-            schema = self.schema_dict[table]
-        return schema
-
-    async def metadata(self, table):
-        if not self.meta_dict:
-            await self._get_metadata()
-        return self.meta_dict.get(table)
-
-    def _lookup_shortname(self, table, shortname):
-        cols = self.meta_dict.get(table, {})
-        return cols.get(shortname)
-
-    def column_metadata(self, table, path):
-        """Get DB column metadata for STIX object path `path`"""
-        # 'path' here could be the prop side of a STIX object path,
-        # BUT it could contain the "shortname" (column name)
-        # We want to return the fullname too
-        # parse_path, then use final node to look up longname
-        # Strip obj_type from longname and replace with table:ref.
-        if table == 'observed-data':
-            longname = ''
-        else:
-            longname = f"{table}:"
-        links = parse_prop(table, path)
-        if len(links) > 1:
-            # There's at least 1 reference/join
-            longname_parts = []
-            tgt_prop_parts = []
-            tgt_type = table
-            for link in links:
-                if link[0] == 'rel':
-                    # Store last referenced table as the "target" table
-                    tgt_type = link[3]
-                    longname_parts.append(link[2])
-                else:
-                    tgt_prop_parts.append(link[2])
-            tgt_prop = '.'.join(tgt_prop_parts)
-            longname += '.'.join(longname_parts) + '.'
-            data = self._lookup_shortname(tgt_type, tgt_prop)
-        else:
-            data = self._lookup_shortname(table, path)
-        if not data:
-            if path.endswith('_refs'):  # Hack for reflists
-                dtype = 'list'
-            else:
-                meta = prop_metadata(table, path)
-                dtype = meta['dtype']
-            data = {
-                'otype': table,
-                'path': path,
-                'shortname': path,
-                'dtype': dtype,
-            }
-        longname += data['path']
-        logger.debug('column_metadata: %s -> %s (dtype %s)', path, longname, data['dtype'])
-        return longname, dict(data)
-
-
-async def get_dbcache(store: AsyncStorage):
-    dbcache = AsyncDBCache(store)
-    await dbcache.get_metadata()
-    return dbcache
-
-
-class SyncWrapper(AsyncStorage):
-    class Placeholder:
-        def __str__(self, _offset=0):
-            return '?'
-
-    def __init__(self,
-                 connstring: str = None,
-                 session_id: str = None,
-                 store: SqlStorage = None):
-        if store:
-            logger.debug('Wrapping storage object %s', store)
-            self.store = store
-            self.dialect = self.store.dialect
-        else:
-            super().__init__(connstring, session_id)
-            self.placeholder = '?'
-            self.dialect = 'sqlite3'
-
-        # SQL data type inference function (database-specific)
-        self.infer_type = infer_type
-
-    async def create(self, ssl_context=None):
-        """
-        Create a new "session" (SQLite3 file).  Fail if it already exists.
-        """
-        # Fail if it already exists
-        if os.path.exists(self.connstring):
-            raise SessionExists(self.connstring)
-        logger.debug('Creating storage for session %s', self.session_id)
-        self.store = get_storage(self.connstring, self.session_id)
-        self.conn = self.store.connection
-        self.placeholder = self.store.placeholder
-        self.dialect = self.store.dialect
-
-    async def attach(self):
-        """
-        Attach/connect to an existing session.  Fail if it doesn't exist.
-        """
-        #TODO: Fail if it doesn't exist
-        logger.debug('Attaching to storage for session %s', self.session_id)
-        self.store = get_storage(self.connstring, self.session_id)
-        self.placeholder = self.store.placeholder
-        self.dialect = self.store.dialect
-
-    async def cache(self,
-                    query_id: str,
-                    bundle: dict):
-        """
-        Ingest a single, in-memory STIX bundle, labelled with `query_id`.
-        """
-        self.store.cache(query_id, bundle)
-
-    async def tables(self):
-        return self.store.tables()
-
-    async def views(self):
-        """Get all view names"""
-        return self.store.views()
-
-    async def table_type(self, viewname):
-        """Get the SCO type for table/view `viewname`"""
-        return self.store.table_type(viewname)
-
-    async def types(self, private=False):
-        return self.store.types(private)
-
-    async def columns(self, viewname):
-        """Get the column names (properties) of `viewname`"""
-        return self.store.columns(viewname)
-
-    async def schema(self, viewname=None):
-        """Get the schema (names and types) of `viewname`"""
-        return self.store.schema(viewname)
-
-    async def delete(self):
-        """Delete ALL data in this store"""
-        self.store.delete()
-
-    async def set_appdata(self, viewname, data):
-        """Attach app-specific data to a viewname"""
-        self.store.set_appdata(viewname, data)
-
-    async def get_appdata(self, viewname):
-        """Retrieve app-specific data for a viewname"""
-        return self.store.get_appdata(viewname)
-
-    async def get_view_data(self, viewnames=None):
-        """Retrieve information about one or more viewnames"""
-        return self.store.get_view_data(viewnames)
-
-    async def run_query(self, query):
-        return self.store.run_query(query).fetchall()
-
-    async def fetch(self, query, *args):
-        """Passthrough to underlying DB"""
-        return self.store._query(query, args).fetchall()
-
-    async def fetchrow(self, query, *args):
-        """Passthrough to underlying DB"""
-        return self.store._query(query, tuple(args)).fetchone()
-
-    async def remove_view(self, viewname):
-        """Remove view `viewname`"""
-        return self.store.remove_view(viewname)
-
-    async def assign_query(self, viewname, query, sco_type=None):
-        """
-        Create a new view `viewname` defined by `query`
-        """
-        return self.store.assign_query(viewname, query, sco_type)
-
-    async def lookup(self, viewname, cols="*", limit=None, offset=None, col_dict=None):
-        """Get the value of `viewname`"""
-        return self.store.lookup(viewname, cols, limit, offset, col_dict)
-
-    async def _is_sql_view(self, name):
-        return self.store._is_sql_view(name)
-
-    async def write_df(self, tablename, df, query_id, schema):
-        cursor = self.store.connection.cursor()  # TODO: need a context manager here?
-        objs = df.to_dict(orient='records')
-        for obj in objs:
-            self._write_one(cursor, tablename, obj, schema, query_id)
-        self.store.connection.commit()
-
-    def _write_one(self, cursor, tablename, obj, schema, query_id):
-        pairs = obj.items()
-        colnames = [i[0] for i in pairs if i != 'type']
-        excluded = self.store._get_excluded(colnames, tablename)
-        valnames = ', '.join([f'"{x}"' for x in colnames])
-        ph = self.store.placeholder
-        phs = ', '.join([ph] * len(colnames))
-        stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({phs})'
-        if 'id' in colnames:
-            if excluded and tablename != 'observed-data':
-                action = f'UPDATE SET {excluded}'
-            else:
-                action = 'NOTHING'
-            stmt += f' ON CONFLICT (id) DO {action}'
-        else:
-            stmt += ' ON CONFLICT DO NOTHING'
-        values = tuple([ujson.dumps(i[1], ensure_ascii=False)
-                        if isinstance(i[1], list) else i[1] for i in pairs])
-        logger.debug('_upsert: "%s", %s', stmt, values)
-        cursor.execute(stmt, values)
-
-        if query_id and 'id' in colnames:
-            # Now add to query table as well
-            stmt = (f'INSERT INTO "__queries" (sco_id, query_id)'
-                    f' VALUES ({ph}, {ph})')
-            cursor.execute(stmt, (obj['id'], query_id))
-
-    #TODO: how is this different than columns?
-    async def properties(self, obj_type=None):
-        return self.store.schema(obj_type)
-
-    async def new_type(self, obj_type, schema):
-        self.store._create_table(obj_type, schema)
-
-
-async def get_async_storage(store: SqlStorage) -> SyncWrapper:  #FIXME: why is this async?
-    """Wrap a sync SqlStorage object with an async interface"""
-    return SyncWrapper(store=store)

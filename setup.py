@@ -15,7 +15,6 @@ requirements = [
     'python-dateutil',
     'ijson',
     'lark-parser',
-    'psycopg2-binary',
     'tabulate',
     'typer',
     'ujson'
@@ -24,6 +23,11 @@ requirements = [
 setup_requirements = ['pytest-runner', 'wheel']
 
 test_requirements = ['pytest>=3',]
+
+extras_requirements = {
+    'postgres': ['psycopg2-binary'],
+    'async-postgres': ['asyncpg']
+}
 
 setup(
     author="IBM Security",
@@ -40,6 +44,7 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
     ],
     description="Columnar storage for STIX 2.0 observations.",
     entry_points={
@@ -49,6 +54,7 @@ setup(
         ],
     },
     install_requires=requirements,
+    extras_require=extras_requirements,
     license="Apache Software License 2.0",
     long_description=readme + '\n\n' + history,
     include_package_data=True,

@@ -12,7 +12,7 @@ from datetime import datetime
 import pandas as pd
 import ujson
 
-from firepit.asyncstorage import AsyncStorage
+from firepit.aio.asyncstorage import AsyncStorage
 from firepit.exceptions import DuplicateTable
 from firepit.props import KNOWN_PROPS
 from firepit.raft import json_normalize
