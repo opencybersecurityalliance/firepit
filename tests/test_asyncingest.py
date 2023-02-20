@@ -6,10 +6,9 @@ from urllib.parse import urlparse
 import numpy as np
 import pandas as pd
 
-from firepit.asyncingest import ingest
-from firepit.asyncingest import translate
-from firepit.asyncstorage import AsyncStorage
-from firepit.asyncstorage import SyncWrapper
+from firepit.aio.ingest import ingest
+from firepit.aio.ingest import translate
+from firepit.aio import get_async_storage
 from firepit.exceptions import SessionNotFound
 
 
@@ -27,12 +26,7 @@ data_source = {
 async def async_storage(tmpdir, clear=True):
     dbname = os.getenv('FIREPITDB', str(tmpdir.join('test.db')))
     session = os.getenv('FIREPITID', 'test-session')
-    store = AsyncStorage(dbname, session)
-    url = urlparse(dbname)
-    if url.scheme == 'postgresql':
-        store = AsyncStorage(dbname, session)
-    if url.scheme in ['sqlite3', '']:
-        store = SyncWrapper(url.path, session)
+    store = get_async_storage(dbname, session)
     await store.attach()
 
     if clear:
