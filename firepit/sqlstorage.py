@@ -393,7 +393,7 @@ class SqlStorage:
             stmt += f' ON CONFLICT (id) DO {action}'
         values = tuple([ujson.dumps(value, ensure_ascii=False)
                         if isinstance(value, list) else value for value in obj])
-        logger.debug('_upsert: "%s", %s', stmt, values)
+        #logger.debug('_upsert: "%s", %s', stmt, values)
         cursor.execute(stmt, values)
 
         if query_id and 'id' in colnames:
