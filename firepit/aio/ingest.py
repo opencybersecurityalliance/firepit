@@ -139,13 +139,11 @@ def _make_ids(df, obj, obj_key, sco_type, ref_ids):
     odf = df[cols]
     ids = []
     # Convert to dicts so we can call makeid
-    #TODO: compute id using itertuples instead?
     for rec in odf.to_dict(orient='records'):
         if not any(rec.values()):
             ids.append(None)
             continue
         sco = {k.rpartition(':')[2]: v for k, v in rec.items() if isinstance(v, (list, dict)) or not pd.isna(v)}
-        #if sco_type in ('ipv4-addr', 'ipv6-addr', 'mac-addr') and pd.isna(sco.get('value')):
         if len(sco) == 0:
             ids.append(None)
         else:
@@ -173,6 +171,8 @@ def _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames):
                 logger.debug('REF "%s" to "%s"', ref_col, id_cols)
                 df[ref_col] = df[id_cols].bfill(axis=1).iloc[:, 0]
             else:
+                logger.debug('Unresolved ref_col "%s" value "%s" on object "%s" type "%s"',
+                             ref_col, value, obj, obj_type)
                 unresolved[ref_col] = value
         elif isinstance(value, list):  # reflists
             # Remap and flatten the list first
@@ -431,10 +431,10 @@ def translate(
         # col is in the form [<obj_name>#]<obj_type>:<obj_attr>
         c = col.find(':')
         obj_key = col[:c]
-        logger.debug('OBJ %s', obj_key)
         obj_set.add(obj_key)
 
     # Resolved reference columns (map of object name to object ID column name)
+    # This is filled in in _make_ids, after generating the STIX 2.1 id for an object.
     ref_ids = defaultdict(list)
 
     # Generate STIX ID for observed-data, plus other required columns
@@ -443,6 +443,8 @@ def translate(
     df['observed-data:created_by_ref'] = identity['id']
     df['observed-data:created'] = timefmt(datetime.utcnow())
     df['observed-data:modified'] = df['observed-data:created']
+    if 'observed-data:number_observed' not in df.columns:
+        df['observed-data:number_observed'] = 1
 
     # Create ref columns
     for ref_col, value in ref_cols.items():
@@ -477,11 +479,13 @@ def translate(
         sco_types.add(sco_type)
         _make_ids(df, obj, obj_key, sco_type, ref_ids)
 
+    # Save any unresolved refs so we can try to resolve them later
     unresolved = {}
     for sco_type in sco_types:
         tmp = _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
         unresolved.update(tmp)
 
+    # Now generate STIX 2.1 ids for SCOs that reference other SCOs
     for obj_key in deferred:
         obj, _, sco_type = obj_key.rpartition('#')
         if not obj:
@@ -489,10 +493,18 @@ def translate(
         _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
         _make_ids(df, obj, obj_key, sco_type, ref_ids)
 
+    # Maybe we can now resolve the unresolved refs?
+    still_unresolved = {}
     for ref_col, value in unresolved.items():
         obj_key, _, _ = ref_col.rpartition(':')
         obj, _, sco_type = obj_key.rpartition('#')
-        _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
+        tmp = _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
+        still_unresolved.update(tmp)
+
+    # Remove any unresolved refs at this point
+    unresolved_ref_cols = list(still_unresolved.keys())
+    logger.debug('Dropping unresolved ref cols %s', unresolved_ref_cols)
+    df = df.drop(unresolved_ref_cols, axis=1)
 
     return df
 
