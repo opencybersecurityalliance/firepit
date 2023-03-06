@@ -460,7 +460,6 @@ def translate(
         if isinstance(value, str):
             df[ref_col] = value
 
-
     # Generate STIX 2.1 id using firepit.stix21.makeid()
     # This is expensive!
     # Maybe we need a dependency graph here, since e.g. we have to
@@ -471,7 +470,7 @@ def translate(
         obj, _, sco_type = obj_key.rpartition('#')
         if not obj:
             continue  # i.e. skip observed-data
-        if sco_type in ('network-traffic', 'file', 'email-message'):
+        if sco_type in ('network-traffic', 'file', 'email-message', 'process'):
             # These types have refs in their ID contributing properties,
             # so do them last
             deferred.add(obj_key)
@@ -505,6 +504,11 @@ def translate(
     unresolved_ref_cols = list(still_unresolved.keys())
     logger.debug('Dropping unresolved ref cols %s', unresolved_ref_cols)
     df = df.drop(unresolved_ref_cols, axis=1)
+
+    # Drop rows that are now all NAs
+    count = len(df.index)
+    df = df.dropna(how='all')
+    logger.debug('Dropped %d blank rows', count - len(df.index))
 
     return df
 
@@ -612,9 +616,10 @@ async def ingest(
             logger.debug('No id property for "%s" (%s)', obj_name, obj_type)
             continue
 
-        #TODO: need to merge dups, not drop them
-        #TODO: use groupby?  Would need to build agg dict first.
-        odf = odf.drop_duplicates('id')
+        # Merge duplicates
+        #TODO: validate agg func 'first'; may want different functions per data type
+        agg_dict = {col: 'first' for col in odf.columns if col != 'id'}
+        odf = odf.groupby(['id']).agg(agg_dict).reset_index()
 
         schema = schemas[obj_type]
 
