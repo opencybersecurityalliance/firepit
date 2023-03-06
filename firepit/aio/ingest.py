@@ -131,6 +131,66 @@ def _to_protocols(value):
     return value
 
 
+def _make_ids(df, obj, obj_key, sco_type, ref_ids):
+    logger.debug('ID: obj "%s" type %s', obj, sco_type)
+    cols = sorted([c for c in df.columns if c.startswith(f'{obj_key}:')])
+    id_col = f'{obj_key}:id'
+    ref_ids[obj].append(id_col)
+    odf = df[cols]
+    ids = []
+    # Convert to dicts so we can call makeid
+    for rec in odf.to_dict(orient='records'):
+        if not any(rec.values()):
+            ids.append(None)
+            continue
+        sco = {k.rpartition(':')[2]: v for k, v in rec.items() if isinstance(v, (list, dict)) or not pd.isna(v)}
+        if len(sco) == 0:
+            ids.append(None)
+        else:
+            sco['type'] = sco_type
+            ids.append(makeid(sco))
+    df[id_col] = ids
+
+
+def _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames):
+    unresolved = {}
+    for ref_col, value in ref_cols.items():
+        obj_key, _, _ = ref_col.rpartition(':')
+        obj, _, obj_type = obj_key.rpartition('#')
+        if obj_key not in obj_set:
+            logger.debug('ref_col "%s" has no source object', ref_col)
+            continue
+        if sco_type != obj_type:
+            continue
+        logger.debug('Resolving ref_col "%s" value "%s" on object "%s" type "%s"',
+                     ref_col, value, obj, obj_type)
+        # Figure out what id_cols this object maps to
+        if isinstance(value, str):
+            id_cols = ref_ids.get(value)
+            if id_cols:
+                logger.debug('REF "%s" to "%s"', ref_col, id_cols)
+                df[ref_col] = df[id_cols].bfill(axis=1).iloc[:, 0]
+            else:
+                logger.debug('Unresolved ref_col "%s" value "%s" on object "%s" type "%s"',
+                             ref_col, value, obj, obj_type)
+                unresolved[ref_col] = value
+        elif isinstance(value, list):  # reflists
+            # Remap and flatten the list first
+            l = [obj_renames.get(i, [i]) for i in value]
+            value = [i for new_list in l for i in new_list]
+            new_list = []
+            for i in value:
+                i = ref_ids.get(i)
+                if isinstance(i, list):
+                    new_list.extend(i)
+                else:
+                    new_list.append(i)
+            id_cols = [i for i in new_list if i in df.columns]
+            df[ref_col] = [[e for e in row if not pd.isna(e)] for row in df[id_cols].values.tolist()]
+            df[ref_col] = df[ref_col].mask(df[ref_col].str.len() == 0, None)
+    return unresolved
+
+
 def translate(
         to_stix_map: dict,
         transformers: dict,
@@ -299,11 +359,22 @@ def translate(
                 logger.debug('DUP column "%s" to "%s", filtering for IPv6', orig_col, dup_col)
                 df[dup_col] = df[orig_col].where(df[orig_col].str.contains(':'), None).copy()
             else:
-                logger.debug('DUP column "%s" to "%s"', orig_col, dup_col)
+                logger.debug('DUP column "%s" to "%s" (copy)', orig_col, dup_col)
                 df[dup_col] = df[orig_col].copy()
 
     # Rename columns
+    # Ignore a rename if the column already exists
     logger.debug('RENAME: %s', renames)
+    cols = set(df.columns)
+    renames = {k: v for k, v in renames.items() if v not in cols}
+    # tmp = {}
+    # for orig_col, new_col in renames.items():
+    #     if new_col in cols:
+    #         # Merge
+    #         df[new_col] = df[new_col].fillna(df[orig_col])
+    #         df = df.drop([orig_col], axis=1)
+    #     else:
+    #         tmp[orig_col] = new_col
     df.rename(columns=renames, inplace=True)
 
     # Drop columns we don't need anymore
@@ -360,38 +431,11 @@ def translate(
         # col is in the form [<obj_name>#]<obj_type>:<obj_attr>
         c = col.find(':')
         obj_key = col[:c]
-        logger.debug('OBJ %s', obj_key)
         obj_set.add(obj_key)
 
     # Resolved reference columns (map of object name to object ID column name)
+    # This is filled in in _make_ids, after generating the STIX 2.1 id for an object.
     ref_ids = defaultdict(list)
-
-    # Generate STIX 2.1 id using firepit.stix21.makeid()
-    # This is expensive!
-    for obj_key in obj_set:
-        obj, _, sco_type = obj_key.rpartition('#')
-        if not obj:
-            continue  # i.e. skip observed-data
-        logger.debug('ID: obj "%s" type %s', obj, sco_type)
-        cols = sorted([c for c in df.columns if c.startswith(f'{obj_key}:')])
-        id_col = f'{obj_key}:id'
-        ref_ids[obj].append(id_col)
-        odf = df[cols]
-        ids = []
-        # Convert to dicts so we can call makeid
-        #TODO: compute id using itertuples instead?
-        for rec in odf.to_dict(orient='records'):
-            if not any(rec.values()):
-                ids.append(None)
-                continue
-            sco = {k.rpartition(':')[2]: v for k, v in rec.items() if isinstance(v, (list, dict)) or not pd.isna(v)}
-            #if sco_type in ('ipv4-addr', 'ipv6-addr', 'mac-addr') and pd.isna(sco.get('value')):
-            if len(sco) == 0:
-                ids.append(None)
-            else:
-                sco['type'] = sco_type
-                ids.append(makeid(sco))
-        df[id_col] = ids
 
     # Generate STIX ID for observed-data, plus other required columns
     df = (df.assign(temp=[f'observed-data--{uuid.uuid4()}' for i in range(len(df.index))])
@@ -399,6 +443,8 @@ def translate(
     df['observed-data:created_by_ref'] = identity['id']
     df['observed-data:created'] = timefmt(datetime.utcnow())
     df['observed-data:modified'] = df['observed-data:created']
+    if 'observed-data:number_observed' not in df.columns:
+        df['observed-data:number_observed'] = 1
 
     # Create ref columns
     for ref_col, value in ref_cols.items():
@@ -411,26 +457,58 @@ def translate(
             logger.debug('REF "%s" has no source object', ref_col)
             continue
 
-        # Figure out what id_cols this object maps to
         if isinstance(value, str):
-            id_cols = ref_ids.get(value)
-            if id_cols:
-                logger.debug('REF "%s" to "%s"', ref_col, id_cols)
-                df[ref_col] = df[id_cols].bfill(axis=1).iloc[:, 0]
-        elif isinstance(value, list):  # reflists
-            # Remap and flatten the list first
-            l = [obj_renames.get(i, [i]) for i in value]
-            value = [i for new_list in l for i in new_list]
-            new_list = []
-            for i in value:
-                i = ref_ids.get(i)
-                if isinstance(i, list):
-                    new_list.extend(i)
-                else:
-                    new_list.append(i)
-            id_cols = [i for i in new_list if i in df.columns]
-            df[ref_col] = [[e for e in row if not pd.isna(e)] for row in df[id_cols].values.tolist()]
-            df[ref_col] = df[ref_col].mask(df[ref_col].str.len() == 0, None)
+            df[ref_col] = value
+
+    # Generate STIX 2.1 id using firepit.stix21.makeid()
+    # This is expensive!
+    # Maybe we need a dependency graph here, since e.g. we have to
+    # make the ipv4-addr ids before network-traffic.
+    deferred = set()
+    sco_types = set()
+    for obj_key in obj_set:
+        obj, _, sco_type = obj_key.rpartition('#')
+        if not obj:
+            continue  # i.e. skip observed-data
+        if sco_type in ('network-traffic', 'file', 'email-message', 'process'):
+            # These types have refs in their ID contributing properties,
+            # so do them last
+            deferred.add(obj_key)
+            continue
+        sco_types.add(sco_type)
+        _make_ids(df, obj, obj_key, sco_type, ref_ids)
+
+    # Save any unresolved refs so we can try to resolve them later
+    unresolved = {}
+    for sco_type in sco_types:
+        tmp = _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
+        unresolved.update(tmp)
+
+    # Now generate STIX 2.1 ids for SCOs that reference other SCOs
+    for obj_key in deferred:
+        obj, _, sco_type = obj_key.rpartition('#')
+        if not obj:
+            continue  # i.e. skip observed-data
+        _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
+        _make_ids(df, obj, obj_key, sco_type, ref_ids)
+
+    # Maybe we can now resolve the unresolved refs?
+    still_unresolved = {}
+    for ref_col, value in unresolved.items():
+        obj_key, _, _ = ref_col.rpartition(':')
+        obj, _, sco_type = obj_key.rpartition('#')
+        tmp = _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
+        still_unresolved.update(tmp)
+
+    # Remove any unresolved refs at this point
+    unresolved_ref_cols = list(still_unresolved.keys())
+    logger.debug('Dropping unresolved ref cols %s', unresolved_ref_cols)
+    df = df.drop(unresolved_ref_cols, axis=1)
+
+    # Drop rows that are now all NAs
+    count = len(df.index)
+    df = df.dropna(how='all')
+    logger.debug('Dropped %d blank rows', count - len(df.index))
 
     return df
 
@@ -530,7 +608,7 @@ async def ingest(
         else:
             prefix = f'{obj_type}:'
         cols = sorted([c for c in df.columns if c.startswith(prefix)])
-        odf = df[cols].dropna().copy()
+        odf = df[cols].dropna(how='all').copy()
         odf.columns = [c.rpartition(':')[2] for c in cols]
         logger.debug('Columns for "%s" (%s): %s', obj_name, obj_type, list(odf.columns))
 
@@ -538,9 +616,10 @@ async def ingest(
             logger.debug('No id property for "%s" (%s)', obj_name, obj_type)
             continue
 
-        #TODO: need to merge dups, not drop them
-        #TODO: use groupby?  Would need to build agg dict first.
-        odf = odf.drop_duplicates('id')
+        # Merge duplicates
+        #TODO: validate agg func 'first'; may want different functions per data type
+        agg_dict = {col: 'first' for col in odf.columns if col != 'id'}
+        odf = odf.groupby(['id']).agg(agg_dict).reset_index()
 
         schema = schemas[obj_type]
 

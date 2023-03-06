@@ -139,12 +139,12 @@ class SyncWrapper(AsyncStorage):
     def _write_one(self, cursor, tablename, obj, schema, query_id):
         pairs = obj.items()
         colnames = [i[0] for i in pairs if i != 'type']
-        excluded = self.store._get_excluded(colnames, tablename)
         valnames = ', '.join([f'"{x}"' for x in colnames])
         ph = self.store.placeholder
         phs = ', '.join([ph] * len(colnames))
         stmt = f'INSERT INTO "{tablename}" ({valnames}) VALUES ({phs})'
         if 'id' in colnames:
+            excluded = self.store._get_excluded(colnames, tablename)
             if excluded and tablename != 'observed-data':
                 action = f'UPDATE SET {excluded}'
             else:
@@ -154,7 +154,7 @@ class SyncWrapper(AsyncStorage):
             stmt += ' ON CONFLICT DO NOTHING'
         values = tuple([ujson.dumps(i[1], ensure_ascii=False)
                         if isinstance(i[1], list) else i[1] for i in pairs])
-        logger.debug('_upsert: "%s", %s', stmt, values)
+        #logger.debug('_upsert: "%s", %s', stmt, values)
         cursor.execute(stmt, values)
 
         if query_id and 'id' in colnames:
@@ -169,3 +169,6 @@ class SyncWrapper(AsyncStorage):
 
     async def new_type(self, obj_type, schema):
         self.store._create_table(obj_type, schema)
+
+    async def new_property(self, obj_type, prop_name, prop_type):
+        self.store._add_column(obj_type, prop_name, prop_type)
