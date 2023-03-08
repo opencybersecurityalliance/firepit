@@ -135,7 +135,7 @@ def get_path_joins(viewname, sco_type, column):
                 results.append(Join('__reflist', 'id', '=', 'source_ref', lhs=lhs, alias='r'))
                 results.append(Join(to_type, 'target_ref', '=', 'id', lhs='r', alias=alias))
             else:
-                results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias))
+                results.append(Join(to_type, ref_name, '=', 'id', lhs=lhs, alias=alias, how='LEFT OUTER'))
         target_table = aliases.get(target_table, target_table)
     return results, target_table, target_column
 
