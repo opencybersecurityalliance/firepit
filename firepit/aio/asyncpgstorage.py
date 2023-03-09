@@ -416,6 +416,8 @@ class AsyncpgStorage(AsyncStorage):
             stype = schema[col].lower()
             if stype == 'text':
                 df[col] = df[col].astype('string')
+            elif stype == 'numeric':
+                df[col] = df[col].astype('UInt64')
             elif stype == 'bigint':
                 df[col] = df[col].astype('Int64')
             elif stype == 'integer':
