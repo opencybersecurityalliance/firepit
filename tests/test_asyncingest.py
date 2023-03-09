@@ -122,6 +122,72 @@ def test_translate():
             "key": "network-traffic.src_port",
             "object": "nt",
         },
+        "process": {
+            "command_line": {
+                "key": "process.command_line",
+                "object": "process"
+            },
+            "entity_id": {
+                "key": "process.x_unique_id",
+                "object": "process"
+            },
+            "parent": {
+                "command_line": {
+                    "key": "process.command_line",
+                    "object": "process_parent"
+                },
+                "entity_id": {
+                    "key": "process.x_unique_id",
+                    "object": "process_parent"
+                },
+                "name": [
+                    {
+                        "key": "process.name",
+                        "object": "process_parent"
+                    },
+                    {
+                        "key": "process.parent_ref",
+                        "object": "process",
+                        "references": "process_parent"
+                    },
+                ],
+                "pid": [
+                    {
+                        "key": "process.pid",
+                        "object": "process_parent",
+                        "transformer": "ToInteger"
+                    },
+                    {
+                        "key": "process.parent_ref",
+                        "object": "process",
+                        "references": "process_parent"
+                    },
+                ]
+            },
+            "pid": [
+                {
+                    "key": "process.pid",
+                    "object": "process",
+                    "transformer": "ToInteger"
+                },
+                {
+                    "key": "x-oca-event.process_ref",
+                    "object": "event",
+                    "references": "process"
+                }
+            ],
+            "name": [
+                {
+                    "key": "process.name",
+                    "object": "process"
+                },
+                {
+                    "key": "x-oca-event.process_ref",
+                    "object": "event",
+                    "references": "process"
+                }
+            ],
+        },
         "protocol": {
             "key": "network-traffic.protocols",
             "object": "nt",
@@ -191,7 +257,26 @@ def test_translate():
         },
         {
             "timestamp": "1675275995003",
-            "sourceip": "2001:db8:85a3:8d3:1319:8a2e:370:7348"
+            "sourceip": "2001:db8:85a3:8d3:1319:8a2e:370:7348",
+            "process": {
+                "parent": {
+                    "name": "services.exe",
+                    "pid": 1048,
+                    "entity_id": "{8dfc401c-d536-625b-0b00-000000002100}",
+                    "executable": "C:\\Windows\\System32\\services.exe",
+                    "command_line": "C:\\Windows\\system32\\services.exe"
+                },
+                "name": "svchost.exe",
+                "working_directory": "C:\\Windows\\system32\\",
+                "pid": 1992,
+                "entity_id": "{8dfc401c-6275-627f-8035-000000002100}",
+                "hash": {
+                    "sha256": "cb19fd67b1d028e01f54c426a0924528c4a8d8ed8996cfe0ee0c6e45285436a1",
+                    "md5": "1b280ad032268a636ecfe6f9165431b7"
+                },
+                "executable": "C:\\Windows\\System32\\svchost.exe",
+                "command_line": "C:\\Windows\\system32\\svchost.exe -k LocalServiceNetworkRestricted -p -s WinHttpAutoProxySvc"
+            },
         },
     ]
 
@@ -279,6 +364,24 @@ def test_translate():
     assert df[lo_col].iloc[1] == '2023-02-01T18:26:35.002000Z'
     assert df[fo_col].iloc[2] == '2023-02-01T18:26:35.003000Z'
     assert df[lo_col].iloc[2] == '2023-02-01T18:26:35.003000Z'
+
+    col = 'process#process:name'
+    assert col in df.columns
+    assert df[col].iloc[0] is None
+    assert df[col].iloc[1] is None
+    assert df[col].iloc[2] == 'svchost.exe'
+
+    col = 'process#process:parent_ref'
+    assert col in df.columns
+    assert df[col].iloc[0] is None
+    assert df[col].iloc[1] is None
+    assert df[col].iloc[2] == df['process_parent#process:id'].iloc[2]
+
+    col = 'process_parent#process:name'
+    assert col in df.columns
+    assert df[col].iloc[0] is None
+    assert df[col].iloc[1] is None
+    assert df[col].iloc[2] == 'services.exe'
 
 
 @pytest.mark.asyncio

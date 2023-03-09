@@ -42,7 +42,9 @@ async def test_async_basics(fake_bundle_file, tmpdir):
 
     conns = await store.lookup('network-traffic',
                                ['src_ref.value', 'src_port', 'dst_ref.value', 'dst_port', 'protocols'])
-    assert conns[0]['src_ref.value'] == '192.168.212.97'
+    # Can't rely on any specific ordering here
+    srcs = [conn['src_ref.value'] for conn in conns]
+    assert '192.168.212.97' in srcs
 
     cache = AsyncDBCache(store)
     metadata = await cache.get_metadata()

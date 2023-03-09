@@ -197,7 +197,6 @@ class AsyncDBCache:
         q = Query('__columns')
         results = await self.store.run_query(q)
         for result in results:
-            print(result)
             otype = result['otype']
             # Create entry for this table if necessary
             if otype not in self.meta_dict:

@@ -1,6 +1,6 @@
 import pytest
 
-from firepit.pgstorage import _rewrite_query
+from firepit.pgcommon import _rewrite_query
 
 
 @pytest.mark.parametrize(

@@ -1,9 +1,10 @@
 import logging
 import os
 
+import ujson
+
 from firepit.aio.asyncstorage import AsyncStorage
-from firepit.exceptions import (InvalidAttr, InvalidStixPath, UnknownViewname,
-                                SessionExists, SessionNotFound, DuplicateTable)
+from firepit.exceptions import SessionExists
 from firepit.sqlstorage import SqlStorage, infer_type
 from firepit.sqlitestorage import get_storage
 

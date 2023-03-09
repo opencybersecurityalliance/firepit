@@ -11,10 +11,10 @@ from firepit.aio.asyncstorage import AsyncStorage
 from firepit.deref import auto_deref_cached
 from firepit.exceptions import (InvalidAttr, InvalidStixPath, UnknownViewname,
                                 SessionExists, SessionNotFound, DuplicateTable)
-from firepit.pgstorage import (CHECK_FOR_COMMON_SCHEMA,
-                               CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
-                               LIKE_BIN, MATCH_BIN, MATCH_FUN, SUBNET_FUN,
-                               _rewrite_view_def, _infer_type)
+from firepit.pgcommon import (CHECK_FOR_COMMON_SCHEMA,
+                              CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
+                              LIKE_BIN, MATCH_BIN, MATCH_FUN, SUBNET_FUN,
+                              _rewrite_view_def, _infer_type)
 from firepit.query import Column, Limit, Offset, Order, Projection, Query
 from firepit.splitter import RecordList, shorten_extension_name
 from firepit.sqlstorage import (DB_VERSION, _format_query,
@@ -416,6 +416,8 @@ class AsyncpgStorage(AsyncStorage):
             stype = schema[col].lower()
             if stype == 'text':
                 df[col] = df[col].astype('string')
+            elif stype == 'numeric':
+                df[col] = df[col].astype('UInt64')
             elif stype == 'bigint':
                 df[col] = df[col].astype('Int64')
             elif stype == 'integer':

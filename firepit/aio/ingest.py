@@ -132,9 +132,9 @@ def _to_protocols(value):
 
 
 def _make_ids(df, obj, obj_key, sco_type, ref_ids):
-    logger.debug('ID: obj "%s" type %s', obj, sco_type)
     cols = sorted([c for c in df.columns if c.startswith(f'{obj_key}:')])
     id_col = f'{obj_key}:id'
+    logger.debug('ID: obj "%s" type %s -> %s', obj, sco_type, id_col)
     ref_ids[obj].append(id_col)
     odf = df[cols]
     ids = []
@@ -153,12 +153,17 @@ def _make_ids(df, obj, obj_key, sco_type, ref_ids):
 
 
 def _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames):
+    """
+    Replace ref col values (which are stix-shifter mapping "object"
+    names) to the value of that object's id column in the same row
+
+    """
     unresolved = {}
     for ref_col, value in ref_cols.items():
         obj_key, _, _ = ref_col.rpartition(':')
         obj, _, obj_type = obj_key.rpartition('#')
         if obj_key not in obj_set:
-            logger.debug('ref_col "%s" has no source object', ref_col)
+            #logger.debug('ref_col "%s" has no source object', ref_col)
             continue
         if sco_type != obj_type:
             continue
@@ -447,6 +452,7 @@ def translate(
         df['observed-data:number_observed'] = 1
 
     # Create ref columns
+    logger.debug('Create ref columns')
     for ref_col, value in ref_cols.items():
         # value could be an object name or list of object names
         logger.debug('REF "%s" value "%s"', ref_col, value)
@@ -464,6 +470,7 @@ def translate(
     # This is expensive!
     # Maybe we need a dependency graph here, since e.g. we have to
     # make the ipv4-addr ids before network-traffic.
+    logger.debug('Generate STIX 2.1 id (1st round)')
     deferred = set()
     sco_types = set()
     for obj_key in obj_set:
@@ -485,12 +492,13 @@ def translate(
         unresolved.update(tmp)
 
     # Now generate STIX 2.1 ids for SCOs that reference other SCOs
+    logger.debug('Generate STIX 2.1 id (2nd round)')
     for obj_key in deferred:
         obj, _, sco_type = obj_key.rpartition('#')
         if not obj:
             continue  # i.e. skip observed-data
-        _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
         _make_ids(df, obj, obj_key, sco_type, ref_ids)
+        _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
 
     # Maybe we can now resolve the unresolved refs?
     still_unresolved = {}
