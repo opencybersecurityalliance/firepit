@@ -24,5 +24,3 @@ def get_async_storage(connstring, session_id=None):
     if url.scheme in ['sqlite3', '']:
         return SyncWrapper(url.path, session_id)
     raise NotImplementedError(url.scheme)
-
-
