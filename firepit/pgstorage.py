@@ -11,7 +11,7 @@ from firepit.exceptions import DuplicateTable
 from firepit.exceptions import InvalidAttr
 from firepit.exceptions import UnexpectedError
 from firepit.exceptions import UnknownViewname
-from firepit.pgcommon import (CHECK_FOR_COMMON_SCHEMA,
+from firepit.pgcommon import (CHECK_FOR_COMMON_SCHEMA, COLUMNS_TABLE,
                               CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
                               LIKE_BIN, MATCH_BIN, MATCH_FUN, SUBNET_FUN,
                               _rewrite_view_def, _infer_type)
