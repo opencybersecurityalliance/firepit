@@ -99,7 +99,7 @@ def auto_deref_cached(view, cols, col_dict, ignore=None, paths=None):
     if not ignore:
         ignore = defaultdict(list)
         ignore['x-oca-asset'] = ['parent_process_ref']
-    if paths:
+    if paths is not None:
         # Only include these specific columns
         include = set()
         for path in paths:
