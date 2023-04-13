@@ -210,6 +210,24 @@ def test_translate():
                 }
             ]
         },
+        "user": {  # Map BOTH "name" and "id" to the same thing - what should happen?
+            "name": [
+                {
+                    "key": "user-account.user_id",
+                    "object": "user"
+                },
+                {
+                    "key": "user-account.account_login",
+                    "object": "user"
+                }
+            ],
+            "id": [
+                {
+                    "key": "user-account.user_id",
+                    "object": "user"
+                }
+            ]
+        },
         "qid": [
             {
                 "key": "x-custom-obj.qid",
@@ -277,12 +295,19 @@ def test_translate():
                 "executable": "C:\\Windows\\System32\\svchost.exe",
                 "command_line": "C:\\Windows\\system32\\svchost.exe -k LocalServiceNetworkRestricted -p -s WinHttpAutoProxySvc"
             },
+            "user": {
+                "id": 1001,
+                "name": "paul"
+            }
         },
     ]
 
     df = translate(stix_map, transformers, events, data_source)
     df = df.replace({np.NaN: None})
-    print(df.columns)
+    print(sorted(list(df.columns)))
+
+    # Test for duplicate columns
+    assert len(df.columns) == len(set(list(df.columns)))
     print(json.dumps(df.to_dict(orient='records'), indent=4))
     assert len(df.index) == 3
 
@@ -382,6 +407,18 @@ def test_translate():
     assert df[col].iloc[0] is None
     assert df[col].iloc[1] is None
     assert df[col].iloc[2] == 'services.exe'
+
+    col = 'user#user-account:user_id'
+    assert col in df.columns
+    assert df[col].iloc[0] is None
+    assert df[col].iloc[1] is None
+    assert df[col].iloc[2] == 1001
+
+    col = 'user#user-account:account_login'
+    assert col in df.columns
+    assert df[col].iloc[0] is None
+    assert df[col].iloc[1] is None
+    assert df[col].iloc[2] == 'paul'
 
 
 @pytest.mark.asyncio

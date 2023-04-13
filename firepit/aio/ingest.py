@@ -372,15 +372,13 @@ def translate(
     logger.debug('RENAME: %s', renames)
     cols = set(df.columns)
     renames = {k: v for k, v in renames.items() if v not in cols}
-    # tmp = {}
-    # for orig_col, new_col in renames.items():
-    #     if new_col in cols:
-    #         # Merge
-    #         df[new_col] = df[new_col].fillna(df[orig_col])
-    #         df = df.drop([orig_col], axis=1)
-    #     else:
-    #         tmp[orig_col] = new_col
-    df.rename(columns=renames, inplace=True)
+    for orig_col, new_col in renames.items():
+        if new_col in df.columns:
+            # Merge
+            df[new_col] = df[new_col].fillna(df[orig_col])
+            df = df.drop([orig_col], axis=1)
+        else:
+            df.rename(columns={orig_col: new_col}, inplace=True)
 
     # Drop columns we don't need anymore
     logger.debug('DROP columns %s', drop_cols)
