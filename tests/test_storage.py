@@ -1,12 +1,12 @@
 import ast
 import csv
-import ujson
-import pytest
 
 from collections import Counter
 from decimal import Decimal
 
-from firepit.exceptions import IncompatibleType
+import pytest
+import ujson
+
 from firepit.exceptions import UnknownViewname
 from firepit.query import Aggregation
 from firepit.query import Column

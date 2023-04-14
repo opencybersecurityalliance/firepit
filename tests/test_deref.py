@@ -1,5 +1,3 @@
-from collections import Counter
-
 from firepit.deref import auto_deref, auto_deref_cached
 from firepit.sqlstorage import _get_col_dict
 from .helpers import tmp_storage

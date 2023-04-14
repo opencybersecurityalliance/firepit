@@ -1,15 +1,11 @@
 import json
-import os
 import pytest
-from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
 
 from firepit.aio.ingest import ingest
 from firepit.aio.ingest import translate
-from firepit.aio import get_async_storage
-from firepit.exceptions import SessionExists, SessionNotFound
 
 from .helpers import async_storage
 
