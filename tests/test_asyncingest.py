@@ -9,7 +9,9 @@ import pandas as pd
 from firepit.aio.ingest import ingest
 from firepit.aio.ingest import translate
 from firepit.aio import get_async_storage
-from firepit.exceptions import SessionNotFound
+from firepit.exceptions import SessionExists, SessionNotFound
+
+from .helpers import async_storage
 
 
 # Data source is a STIX Identity SDO
@@ -21,23 +23,6 @@ data_source = {
     'created': ts,
     'modified': ts,
 }
-
-
-async def async_storage(tmpdir, clear=True):
-    dbname = os.getenv('FIREPITDB', str(tmpdir.join('test.db')))
-    session = os.getenv('FIREPITID', 'test-session')
-    store = get_async_storage(dbname, session)
-    await store.attach()
-
-    if clear:
-        # Clear out previous test session
-        try:
-            await store.delete()
-        except SessionNotFound as e:
-            pass # nothing to delete
-        await store.create()
-
-    return store
 
 
 # Adapted from stix-shifter sources
