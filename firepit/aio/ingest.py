@@ -398,7 +398,7 @@ def translate(
         if txf_name == 'ToInteger':
             df[txf_col] = df[txf_col].dropna().astype('int')
         elif txf_name == 'EpochToTimestamp':  # QRadar, QDL
-            df[txf_col] = (pd.to_datetime(df[txf_col],
+            df[txf_col] = (pd.to_datetime(df[txf_col].astype(int),
                                           unit="ms",
                                           utc=True,
                                           infer_datetime_format=True)
