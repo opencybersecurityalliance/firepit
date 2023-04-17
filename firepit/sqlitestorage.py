@@ -19,6 +19,10 @@ from firepit.sqlstorage import validate_name
 logger = logging.getLogger(__name__)
 
 
+CONTAINS_TABLE = ('CREATE TABLE IF NOT EXISTS "__contains" '
+                  '(source_ref TEXT, target_ref TEXT, x_firepit_rank INTEGER);')
+#TODO:' UNIQUE(source_ref, target_ref)
+
 COLUMNS_TABLE = ('CREATE TABLE IF NOT EXISTS "__columns" '
                  '(otype TEXT, path TEXT, shortname TEXT, dtype TEXT,'
                  ' UNIQUE(otype, path));')
@@ -110,6 +114,8 @@ class SQLiteStorage(SqlStorage):
         else:
             # Do DB initization
             cursor.execute('BEGIN;')
+            cursor.execute(CONTAINS_TABLE)
+            cursor.execute(COLUMNS_TABLE)
             cursor.execute(ID_TABLE)
             cursor.execute(OD_TABLE)
             self._initdb(cursor)
