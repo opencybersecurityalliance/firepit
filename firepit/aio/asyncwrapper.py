@@ -4,7 +4,7 @@ import os
 import ujson
 
 from firepit.aio.asyncstorage import AsyncStorage
-from firepit.exceptions import SessionExists
+from firepit.exceptions import SessionExists, SessionNotFound
 from firepit.sqlstorage import SqlStorage, infer_type
 from firepit.sqlitestorage import get_storage
 
@@ -50,7 +50,9 @@ class SyncWrapper(AsyncStorage):
         """
         Attach/connect to an existing session.  Fail if it doesn't exist.
         """
-        #TODO: Fail if it doesn't exist
+        # Fail if it doesn't exist
+        if not os.path.isfile(self.connstring):
+            raise SessionNotFound(self.connstring)
         logger.debug('Attaching to storage for session %s', self.session_id)
         self.store = get_storage(self.connstring)
         self.placeholder = self.store.placeholder

@@ -19,6 +19,10 @@ from firepit.sqlstorage import validate_name
 logger = logging.getLogger(__name__)
 
 
+CONTAINS_TABLE = ('CREATE TABLE IF NOT EXISTS "__contains" '
+                  '(source_ref TEXT, target_ref TEXT, x_firepit_rank INTEGER);')
+#TODO:' UNIQUE(source_ref, target_ref)
+
 COLUMNS_TABLE = ('CREATE TABLE IF NOT EXISTS "__columns" '
                  '(otype TEXT, path TEXT, shortname TEXT, dtype TEXT,'
                  ' UNIQUE(otype, path));')
@@ -110,6 +114,8 @@ class SQLiteStorage(SqlStorage):
         else:
             # Do DB initization
             cursor.execute('BEGIN;')
+            cursor.execute(CONTAINS_TABLE)
+            cursor.execute(COLUMNS_TABLE)
             cursor.execute(ID_TABLE)
             cursor.execute(OD_TABLE)
             self._initdb(cursor)
@@ -125,7 +131,6 @@ class SQLiteStorage(SqlStorage):
             data = self.get_view_data()
             views = {}
             for row in data:
-                print(row)
                 views[row['name']] = row
             cursor = self._execute('BEGIN;')
             self._execute('DROP TABLE __symtable', cursor)
@@ -134,7 +139,6 @@ class SQLiteStorage(SqlStorage):
                     ' UNIQUE(name));')
             self._execute(stmt, cursor)
             for view in views.values():
-                print(view)
                 stmt = (f'INSERT INTO "__symtable" (name, type, appdata)'
                         f' VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder})')
                 cursor.execute(stmt, (view['name'], view['type'], view['appdata']))

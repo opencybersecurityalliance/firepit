@@ -372,15 +372,13 @@ def translate(
     logger.debug('RENAME: %s', renames)
     cols = set(df.columns)
     renames = {k: v for k, v in renames.items() if v not in cols}
-    # tmp = {}
-    # for orig_col, new_col in renames.items():
-    #     if new_col in cols:
-    #         # Merge
-    #         df[new_col] = df[new_col].fillna(df[orig_col])
-    #         df = df.drop([orig_col], axis=1)
-    #     else:
-    #         tmp[orig_col] = new_col
-    df.rename(columns=renames, inplace=True)
+    for orig_col, new_col in renames.items():
+        if new_col in df.columns:
+            # Merge
+            df[new_col] = df[new_col].fillna(df[orig_col])
+            df = df.drop([orig_col], axis=1)
+        else:
+            df.rename(columns={orig_col: new_col}, inplace=True)
 
     # Drop columns we don't need anymore
     logger.debug('DROP columns %s', drop_cols)
@@ -400,8 +398,9 @@ def translate(
         if txf_name == 'ToInteger':
             df[txf_col] = df[txf_col].dropna().astype('int')
         elif txf_name == 'EpochToTimestamp':  # QRadar, QDL
-            df[txf_col] = (pd.to_datetime(df[txf_col],
+            df[txf_col] = (pd.to_datetime(df[txf_col].astype(int),
                                           unit="ms",
+                                          utc=True,
                                           infer_datetime_format=True)
                            .dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ"))
         elif txf_name in ('FilterIPv4List', 'FilterIPv6List'):

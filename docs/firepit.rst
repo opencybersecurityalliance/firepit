@@ -1,6 +1,14 @@
 firepit package
 ===============
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   firepit.aio
+
 Submodules
 ----------
 
@@ -16,6 +24,22 @@ firepit.exceptions module
 -------------------------
 
 .. automodule:: firepit.exceptions
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+firepit.generator module
+------------------------
+
+.. automodule:: firepit.generator
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+firepit.pgcommon module
+-----------------------
+
+.. automodule:: firepit.pgcommon
    :members:
    :undoc-members:
    :show-inheritance:
@@ -40,6 +64,14 @@ firepit.query module
 --------------------
 
 .. automodule:: firepit.query
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+firepit.schemas module
+----------------------
+
+.. automodule:: firepit.schemas
    :members:
    :undoc-members:
    :show-inheritance:

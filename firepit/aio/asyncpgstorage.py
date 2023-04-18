@@ -43,6 +43,7 @@ class AsyncpgStorage(AsyncStorage):
             return f'${s}'
 
     def __init__(self, connstring: str, session_id: str):
+        validate_name(session_id)
         self.placeholder = '%s'
         self.dialect = 'postgresql'
         self.connstring = connstring
@@ -72,8 +73,11 @@ class AsyncpgStorage(AsyncStorage):
                 await self.conn.execute(LIKE_BIN)
                 await self.conn.execute(SUBNET_FUN)
 
-        #TODO: fail if it already exists
-        await self.conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{self.session_id}"')
+        # fail if it already exists
+        try:
+            await self.conn.execute(f'CREATE SCHEMA "{self.session_id}"')
+        except asyncpg.exceptions.DuplicateSchemaError:
+            raise SessionExists(self.session_id)
         await self.conn.execute(f'SET search_path TO "{self.session_id}", firepit_common')
 
         async with self.conn.transaction():
@@ -90,8 +94,16 @@ class AsyncpgStorage(AsyncStorage):
         """
         logger.debug('Attaching to storage for session %s', self.session_id)
         self.conn = await asyncpg.connect(self.connstring)
+
+        # fail if it doesn't exist
+        result = await self.conn.fetch(
+            ("SELECT schema_name"
+             " FROM information_schema.schemata"
+             f" WHERE schema_name = '{self.session_id}'"))
+        if not result:
+            raise SessionNotFound(self.session_id)
+
         await self.conn.execute(f'SET search_path TO "{self.session_id}", firepit_common')
-        #TODO: fail if it doesn't exist
 
     async def cache(self,
                     query_id: str,

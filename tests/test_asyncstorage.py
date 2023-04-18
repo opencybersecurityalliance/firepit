@@ -3,24 +3,40 @@ import pytest
 
 from firepit.aio import get_async_storage
 from firepit.aio.asyncstorage import AsyncDBCache
-from firepit.exceptions import SessionNotFound
+from firepit.exceptions import SessionExists, SessionNotFound
+
+from .helpers import async_storage
 
 
-async def async_storage(tmpdir, clear=True):
+@pytest.mark.asyncio
+async def test_async_create(tmpdir):
     dbname = os.getenv('FIREPITDB', str(tmpdir.join('test.db')))
-    session = os.getenv('FIREPITID', 'test-session')
+    session = os.getenv('FIREPITID', 'test-session-create')
     store = get_async_storage(dbname, session)
-    await store.attach()
 
-    if clear:
-        # Clear out previous test session
-        try:
-            await store.delete()
-        except SessionNotFound as e:
-            pass # nothing to delete
+    # First make sure the session doesn't already exists
+    try:
+        await store.attach()
+        await store.delete()
+    except SessionNotFound:
+        pass
+
+    # Now create it anew
+    await store.create()
+
+    # Creating it again should fail
+    with pytest.raises(SessionExists):
         await store.create()
 
-    return store
+
+@pytest.mark.asyncio
+async def test_async_attach_failure(tmpdir):
+    dbname = os.getenv('FIREPITDB', str(tmpdir.join('test.db')))
+    session = os.getenv('FIREPITID', 'test-session-attach-fail')
+    store = get_async_storage(dbname, session)
+
+    with pytest.raises(SessionNotFound):
+        await store.attach()
 
 
 @pytest.mark.asyncio
