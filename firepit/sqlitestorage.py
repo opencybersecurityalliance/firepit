@@ -131,7 +131,6 @@ class SQLiteStorage(SqlStorage):
             data = self.get_view_data()
             views = {}
             for row in data:
-                print(row)
                 views[row['name']] = row
             cursor = self._execute('BEGIN;')
             self._execute('DROP TABLE __symtable', cursor)
@@ -140,7 +139,6 @@ class SQLiteStorage(SqlStorage):
                     ' UNIQUE(name));')
             self._execute(stmt, cursor)
             for view in views.values():
-                print(view)
                 stmt = (f'INSERT INTO "__symtable" (name, type, appdata)'
                         f' VALUES ({self.placeholder}, {self.placeholder}, {self.placeholder})')
                 cursor.execute(stmt, (view['name'], view['type'], view['appdata']))
