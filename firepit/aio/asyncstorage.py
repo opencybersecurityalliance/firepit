@@ -167,6 +167,9 @@ class AsyncStorage:
 
         # Load records into dataframe and do type conversions as required
         df = pd.DataFrame(records)
+        if 'type' in df.columns:
+            # We don't need the type column since each table *is* a type
+            df = df.drop('type', axis=1)
         await self.write_df(obj_type, df, query_id, schema)
 
     async def write_df(self, tablename, df, query_id, schema):
