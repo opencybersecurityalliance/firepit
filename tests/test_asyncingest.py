@@ -18,6 +18,7 @@ data_source = {
     'identity_class': 'test',
     'created': ts,
     'modified': ts,
+    'type': 'identity'
 }
 
 
