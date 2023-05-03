@@ -51,11 +51,11 @@ def _join_ip_tables(col_dict, qry, path, proj, prop, prev_table):
     # Collect columns that are exclusive to one table or the other
     for c in v4_cols - v6_cols:
         if c != prop and not c.endswith('_ref'):
-            for a in ("src4", "dst4"):
+            for a in ("src_ref4", "dst_ref4"):
                 proj.append(Column(c, a, f"{prefix}.{c}"))
     for c in v6_cols - v4_cols:
         if c != prop and not c.endswith('_ref'):
-            for a in ("src6", "dst6"):
+            for a in ("src_ref6", "dst_ref6"):
                 proj.append(Column(c, a, f"{prefix}.{c}"))
 
 
