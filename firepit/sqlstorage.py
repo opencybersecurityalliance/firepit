@@ -960,7 +960,63 @@ class SqlStorage:
         else:
             res = qry
         return res
+    def getAllNestedObjectsWithAnAttributeOfSCO(
+            self,
+            viewname,
+            path=None,
+            value=None,
+            nameOfColumnTobeAppended='id',
+            limit=None,
+            run=True):
+        
 
+        # Something like this:
+        # select sco."{column}" as "{column}", obs."{ts}" as "{ts}"
+        #   from "{viewname}" sco
+        #     join __contains c on sco.id = c.target_ref
+        #     join "observed-data" obs on c.source_ref = obs.id
+        #   where sco."{column}" = {value};
+
+        qry = Query([
+            Table(viewname),
+            Join('__contains', 'id', '=', 'target_ref'),
+            Join('observed-data', 'source_ref', '=', 'id')
+        ])
+        table = viewname
+        if path:
+            if isinstance(path, (list, tuple)):
+                paths = path
+                column = None
+            else:
+                paths = [path]
+                column = path
+        else:
+            paths = []
+            column = None
+        proj = []
+        for p in paths:
+            if p == '*':
+                continue
+            joins, table, column = self.path_joins(viewname, None, p)
+            qry.extend(joins)
+            proj.append(Column(column, table, p))
+        if column and value is not None:
+            qry.append(Filter([Predicate(column, '=', value)]))
+        ts_col = Column(nameOfColumnTobeAppended, 'observed-data')
+        qry.append(Order([ts_col]))
+        if not proj:
+            proj = [Column('*', viewname)]
+        qry.append(Projection([ts_col] + proj))
+        if limit:
+            qry.append(Limit(limit))
+
+        if run:
+            cursor = self.run_query(qry)
+            res = cursor.fetchall()
+            cursor.close()
+        else:
+            res = qry
+        return res    
     def summary(self, viewname, path=None, value=None):
         """
         Get the first and last observed time and number observed for observations of `viewname`, optionally specifying `path` and `value`.
