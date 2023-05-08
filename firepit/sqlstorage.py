@@ -298,7 +298,7 @@ class SqlStorage:
     def _create_index(self, tablename, cursor):
         if tablename in ['__contains', '__reflist', 'relationship']:
             for col in ['source_ref', 'target_ref']:
-                self._execute(f'CREATE INDEX "{tablename}_{col}_idx" ON "{tablename}" ("{col}");', cursor)
+                self._execute(f'CREATE INDEX IF NOT EXISTS "{tablename}_{col}_idx" ON "{tablename}" ("{col}");', cursor)
 
     def _create_table(self, tablename, columns):
         stmt = f'CREATE TABLE "{tablename}" ('
