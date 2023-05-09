@@ -960,23 +960,19 @@ class SqlStorage:
         else:
             res = qry
         return res
-    def getAllNestedObjectsWithAnAttributeOfSCO(
+        
+    def get_all_nested_objects_including_an_attribute_of_SCO(
             self,
             viewname,
+            name_of_attribute,
             path=None,
             value=None,
-            nameOfColumnTobeAppended='id',
             limit=None,
             run=True):
-        
-
-        # Something like this:
-        # select sco."{column}" as "{column}", obs."{ts}" as "{ts}"
-        #   from "{viewname}" sco
-        #     join __contains c on sco.id = c.target_ref
-        #     join "observed-data" obs on c.source_ref = obs.id
-        #   where sco."{column}" = {value};
-
+	    """
+        Get the given attribute of the observations of `value` in `viewname`.`path`
+        Returns list of dicts like {'an_attribute_of_SCO': '...', '{column}': '...'}
+        """
         qry = Query([
             Table(viewname),
             Join('__contains', 'id', '=', 'target_ref'),
@@ -1002,11 +998,11 @@ class SqlStorage:
             proj.append(Column(column, table, p))
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
-        ts_col = Column(nameOfColumnTobeAppended, 'observed-data')
-        qry.append(Order([ts_col]))
+        new_col = Column(name_of_attribute, 'observed-data')
+        qry.append(Order([new_col]))
         if not proj:
             proj = [Column('*', viewname)]
-        qry.append(Projection([ts_col] + proj))
+        qry.append(Projection([new_col] + proj))
         if limit:
             qry.append(Limit(limit))
 
@@ -1016,7 +1012,8 @@ class SqlStorage:
             cursor.close()
         else:
             res = qry
-        return res    
+        return res  
+
     def summary(self, viewname, path=None, value=None):
         """
         Get the first and last observed time and number observed for observations of `viewname`, optionally specifying `path` and `value`.
