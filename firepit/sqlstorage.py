@@ -969,7 +969,7 @@ class SqlStorage:
             value=None,
             limit=None,
             run=True):
-	"""
+        """
         Get the given attribute of the observations of `value` in `viewname`.`path`
         Returns list of dicts like {'an_attribute_of_SCO': '...', '{column}': '...'}
         """
