@@ -14,7 +14,7 @@ from firepit.exceptions import UnknownViewname
 from firepit.pgcommon import (CHECK_FOR_COMMON_SCHEMA, COLUMNS_TABLE,
                               CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
                               LIKE_BIN, MATCH_BIN, MATCH_FUN, SUBNET_FUN,
-                              _rewrite_view_def, _infer_type)
+                              _rewrite_view_def, _infer_type, pg_shorten)
 from firepit.splitter import SqlWriter
 from firepit.sqlstorage import DB_VERSION
 from firepit.sqlstorage import SqlStorage
@@ -65,7 +65,7 @@ class ListToTextIO:
         try:
             while n > len(self.buf):
                 obj = next(self.it)
-                vals = [ujson.dumps(val, ensure_ascii=False) if isinstance(val, list)
+                vals = [ujson.dumps(val, ensure_ascii=False) if isinstance(val, (list, dict))
                         else _text_encode(val) for val in obj]
                 self.buf += self.sep.join(vals) + '\n'
             result = self.buf[:n]
@@ -216,6 +216,7 @@ class PgStorage(SqlStorage):
             self,
             placeholder=self.placeholder,
             infer_type=_infer_type,
+            shorten=pg_shorten,
             **kwargs
         )
 
@@ -432,7 +433,7 @@ class PgStorage(SqlStorage):
                 query_values.append(obj[idx])
                 query_values.append(query_id)
             values.extend([ujson.dumps(value, ensure_ascii=False)
-                           if isinstance(value, list) else value for value in obj])
+                           if isinstance(value, (list, dict)) else value for value in obj])
         cursor.execute(stmt, values)
 
         if query_id and 'id' in colnames:

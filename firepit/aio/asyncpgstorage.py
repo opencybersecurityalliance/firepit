@@ -14,9 +14,9 @@ from firepit.exceptions import (InvalidAttr, InvalidStixPath, UnknownViewname,
 from firepit.pgcommon import (CHECK_FOR_COMMON_SCHEMA,
                               CHECK_FOR_QUERIES_TABLE, INTERNAL_TABLES,
                               LIKE_BIN, MATCH_BIN, MATCH_FUN, SUBNET_FUN,
-                              _rewrite_view_def, _infer_type)
+                              _rewrite_view_def, _infer_type, pg_shorten)
 from firepit.query import Column, Limit, Offset, Order, Projection, Query
-from firepit.splitter import RecordList, shorten_extension_name
+from firepit.splitter import RecordList
 from firepit.sqlstorage import (DB_VERSION, _format_query,
                                 _make_aggs, _transform)
 from firepit.validate import validate_name, validate_path
@@ -54,7 +54,7 @@ class AsyncpgStorage(AsyncStorage):
         self.infer_type = _infer_type
 
         # SQL column name function (database-specific)
-        self.shorten = shorten_extension_name
+        self.shorten = pg_shorten
 
     async def create(self, ssl_context=None):
         """

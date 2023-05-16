@@ -72,3 +72,69 @@ async def test_async_basics(fake_bundle_file, tmpdir):
     assert set(await cache.columns('url')) == {'id', 'value'}
 
     await store.delete()
+
+
+@pytest.mark.asyncio
+async def test_cache_complex_object(tmpdir):
+    bundle = {
+        "type": "bundle",
+        "id": "bundle--9e83faeb-3cb3-4aa2-97d0-35230c98e064",
+        "objects": [
+            {
+                "type": "identity",
+                "id": "identity--f431f809-377b-45e0-aa1c-6a4751cae5ff",
+                "name": "example",
+                "identity_class": "events"
+            },
+            {
+                "id": "observed-data--cc5f37b9-b7bc-45b4-a3a0-99e2540a039b",
+                "type": "observed-data",
+                "created_by_ref": "identity--f431f809-377b-45e0-aa1c-6a4751cae5ff",
+                "created": "2023-04-18T02:24:27.941Z",
+                "modified": "2023-04-18T02:24:27.941Z",
+                "objects": {
+                    "0": {
+                        "type": "x-oca-example",
+                        "level_01": {
+                            "level_02": {
+                                "level_03": {
+                                    "level_04": {
+                                        "level_05": {
+                                            "level_06": {
+                                                "level_07": {
+                                                    "level_08": {
+                                                        "stuff": "It's a lot",
+                                                        "things": [
+                                                            {
+                                                                "key": "key_1",
+                                                                "value": "value_1"
+                                                            },
+                                                            {
+                                                                "key": "key_2",
+                                                                "value": "value_2"
+                                                            },
+                                                            {
+                                                                "key": "key_3",
+                                                                "value": "value_3"
+                                                            }
+                                                        ]
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    }
+
+    store = await async_storage(tmpdir)
+    await store.cache('q1', bundle)
+    cols = await store.columns('x-oca-example')
+
+    # For custom objects we no longer flatten beyond first level.
+    assert set(cols) == {'id', 'level_01'}
