@@ -403,6 +403,53 @@ def test_translate():
     assert df[col].iloc[2] == 'paul'
 
 
+def test_unmapped_col():
+    # Example STIX mapping
+    stix_map = {
+        "timestamp": [
+            {
+                "key": "first_observed",
+                "transformer": "EpochToTimestamp",
+                "cybox": False
+            },
+            {
+                "key": "last_observed",
+                "transformer": "EpochToTimestamp",
+                "cybox": False
+            },
+        ],
+        "foo": {
+            "bar": {
+                "key": "x-foo-object.bar"
+            }
+        }
+    }
+    transformers = {}
+
+    # Fake up some data
+    # Note there's a mapping for foo.bar, but not just plain old "foo"
+    events = [
+        {
+            "foo": "bar",  # "Half-unmapped" column
+            "timestamp": "1675275995001",
+        }
+    ]
+    df = translate(stix_map, transformers, events, data_source)
+
+    events = [
+        {
+            "foo": {
+                "baz": "wowee"
+            },
+            "timestamp": "1675275995002",
+        },
+        {
+            "timestamp": "1675275995003",
+        },
+    ]
+    df = translate(stix_map, transformers, events, data_source)
+
+
 @pytest.mark.asyncio
 async def test_ingest(tmpdir):
     df = pd.DataFrame(
