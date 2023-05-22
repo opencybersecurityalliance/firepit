@@ -5,6 +5,7 @@ interface) and aio.asyncpgstorage.py (the async interface).
 
 import logging
 import re
+import uuid
 from collections import defaultdict
 
 from firepit.sqlstorage import infer_type
@@ -159,3 +160,13 @@ def _rewrite_view_def(viewname, viewdef):
 
     # Must be a table
     return f'SELECT * FROM "{viewname}"'
+
+
+FIREPIT_NS = uuid.UUID('{c55c83a6-06d3-4680-b1e0-1cfd1deb332d}')
+
+def pg_shorten(key):
+    key = re.sub(r"^extensions\.'(x-)?([\w\d_-]+)'\.", "x_", key)
+    if len(key) > 48:
+        # Still too long
+        key = uuid.uuid5(FIREPIT_NS, key).hex
+    return key

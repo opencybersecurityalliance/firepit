@@ -84,9 +84,15 @@ def _get_mapping(mapping: dict, col: str):
             if not tmp:
                 break
         cmap = tmp
-    if cmap is not None and not isinstance(cmap, list):
-        # there could me more than 1 mapping target
-        cmap = [cmap]
+    if cmap is not None:
+        if isinstance(cmap, dict):
+            if 'key' in cmap:
+                # there could me more than 1 mapping target
+                cmap = [cmap]
+            else:
+                # Not actually a mapping?
+                cmap = None
+
     return cmap
 
 

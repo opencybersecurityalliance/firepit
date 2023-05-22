@@ -74,8 +74,9 @@ def _set_id(obs):
     return sid
 
 
-def json_normalize(d, prefix='', sep='.', flat_lists=True):
+def json_normalize(d, prefix='', sep='.', flat_lists=False):
     r = OrderedDict()  # {}
+    otype = d.get('type', '')
     for k, v in d.items():
         if '-' in k:  # Weird STIX rule: single quotes around things like SHA-1
             if ':' in k:
@@ -88,7 +89,8 @@ def json_normalize(d, prefix='', sep='.', flat_lists=True):
             key = k
         if prefix:
             key = f'{prefix}{sep}{key}'
-        if isinstance(v, dict):
+        if isinstance(v, dict) and not (isinstance(otype, str) and otype.startswith('x-')):
+            # Don't recurse for custom SCO objects
             r.update(json_normalize(v, key, sep, flat_lists))
         elif flat_lists and isinstance(v, list):
             for i, val in enumerate(v):
