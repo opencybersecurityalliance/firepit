@@ -899,7 +899,21 @@ class SqlStorage:
         else:
             count = self.count(viewname)
         return count
-        
+    
+    def timestamped(
+            self,
+            viewname,
+            path=None,
+            value=None,
+            timestamp='first_observed',
+            limit=None,
+            run=True):
+        """
+        Get the timestamped observations of `value` in `viewname`.`path`
+        Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
+        """
+        return extract_observeddata_attribute(viewname, timestamp)
+    
     def extract_observeddata_attribute(
             self,
             viewname,
