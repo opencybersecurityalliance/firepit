@@ -965,7 +965,7 @@ class SqlStorage:
         Get the timestamped observations of `value` in `viewname`.`path`
         Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
         """
-        return extract_observeddata_attribute(viewname, timestamp, path, value, limit, run)
+        return self.extract_observeddata_attribute(viewname, timestamp, path, value, limit, run)
 
     def summary(self, viewname, path=None, value=None):
         """
