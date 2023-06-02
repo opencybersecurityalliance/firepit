@@ -910,7 +910,7 @@ class SqlStorage:
             run=True):
         """
         Get the observations of `value` in `viewname`.`path`
-        Returns list of dicts like {'an_attribute_of_SCO': '...', '{column}': '...'}
+        Returns list of dicts like {'name_of_SDO_attribute': '...', '{column}': '...'}
         """
         qry = Query([
             Table(viewname),
@@ -965,7 +965,7 @@ class SqlStorage:
         Get the timestamped observations of `value` in `viewname`.`path`
         Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
         """
-        return extract_observeddata_attribute(viewname, timestamp)
+        return extract_observeddata_attribute(viewname, timestamp, path, value, limit, run)
 
     def summary(self, viewname, path=None, value=None):
         """
