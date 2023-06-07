@@ -88,12 +88,12 @@ def _like_bin(pattern, value):
 
 
 class SQLiteStorage(SqlStorage):
-    def __init__(self, dbname, use_same_thread=True):
+    def __init__(self, dbname, check_same_thread=True):
         super().__init__()
         self.dialect = 'sqlite3'
         self.placeholder = '?'
         self.dbname = dbname
-        self.connection = sqlite3.connect(dbname, use_same_thread=use_same_thread)
+        self.connection = sqlite3.connect(dbname, check_same_thread=check_same_thread)
         self.connection.row_factory = row_factory
         logger.debug("Connection to SQLite DB %s successful", dbname)
 
