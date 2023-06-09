@@ -899,27 +899,19 @@ class SqlStorage:
         else:
             count = self.count(viewname)
         return count
-
-    def timestamped(
+        
+    def extract_observeddata_attribute(
             self,
             viewname,
+            name_of_attribute,
             path=None,
             value=None,
-            timestamp='first_observed',
             limit=None,
             run=True):
         """
-        Get the timestamped observations of `value` in `viewname`.`path`
-        Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
+        Get the observations of `value` in `viewname`.`path`
+        Returns list of dicts like {'name_of_SDO_attribute': '...', '{column}': '...'}
         """
-
-        # Something like this:
-        # select sco."{column}" as "{column}", obs."{ts}" as "{ts}"
-        #   from "{viewname}" sco
-        #     join __contains c on sco.id = c.target_ref
-        #     join "observed-data" obs on c.source_ref = obs.id
-        #   where sco."{column}" = {value};
-
         qry = Query([
             Table(viewname),
             Join('__contains', 'id', '=', 'target_ref'),
@@ -945,11 +937,11 @@ class SqlStorage:
             proj.append(Column(column, table, p))
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
-        ts_col = Column(timestamp, 'observed-data')
-        qry.append(Order([ts_col]))
+        new_col = Column(name_of_attribute, 'observed-data')
+        qry.append(Order([new_col]))
         if not proj:
             proj = [Column('*', viewname)]
-        qry.append(Projection([ts_col] + proj))
+        qry.append(Projection([new_col] + proj))
         if limit:
             qry.append(Limit(limit))
 
@@ -959,7 +951,21 @@ class SqlStorage:
             cursor.close()
         else:
             res = qry
-        return res
+        return res    
+    
+    def timestamped(
+            self,
+            viewname,
+            path=None,
+            value=None,
+            timestamp='first_observed',
+            limit=None,
+            run=True):
+        """
+        Get the timestamped observations of `value` in `viewname`.`path`
+        Returns list of dicts like {'timestamp': '2021-10-...', '{column}': '...'}
+        """
+        return self.extract_observeddata_attribute(viewname, timestamp, path, value, limit, run)
 
     def summary(self, viewname, path=None, value=None):
         """
