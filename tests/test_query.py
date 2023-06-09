@@ -24,6 +24,7 @@ from firepit.query import Unique
         ('foo', '=', 99, 1),
         ('bar', '>=', 99, 1),
         ('baz', 'LIKE', '%blah%', 1),
+        ('baz', 'MATCHES', '^fooba.$', 1),
     ]
 )
 def test_predicate(lhs, op, rhs, expected_len):

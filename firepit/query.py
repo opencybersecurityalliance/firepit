@@ -5,7 +5,7 @@ from firepit.validate import validate_name
 from firepit.validate import validate_path
 
 COMP_OPS = ['=', '<>', '!=', '<', '>', '<=', '>=',
-            'LIKE', 'IN', 'IS', 'NOT LIKE', 'NOT IN', 'IS NOT']
+            'LIKE', 'IN', 'IS', 'NOT LIKE', 'NOT IN', 'IS NOT', 'MATCHES']
 PRED_OPS = ['AND', 'OR']
 JOIN_TYPES = ['INNER', 'OUTER', 'LEFT OUTER', 'CROSS']
 AGG_FUNCS = ['COUNT', 'SUM', 'MIN', 'MAX', 'AVG', 'NUNIQUE']
