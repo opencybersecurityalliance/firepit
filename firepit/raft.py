@@ -67,6 +67,22 @@ def get_objects(source, types=None):
             bundle = ujson.loads(fp.read())
         yield from _yield_objects(bundle, types)
 
+def get_bundle_id(source):
+    '''A function to get the id of the bundle'''
+    if isinstance(source, dict):
+        return source.get('id')
+    elif source.startswith('http'):
+        response = requests.get(source, stream=True)
+        fp = GeneratorIO(response.iter_content(chunk_size=8192))
+        bundle = ujson.loads(fp.read())
+        return bundle.get('id')
+    elif hasattr(source, 'read'):
+        bundle = ujson.loads(source.read())
+        return bundle.get('id')
+    else:
+        with open(source, 'r') as fp:
+            bundle = ujson.loads(fp.read())
+            return bundle.get('id')
 
 def _set_id(obs):
     sid = stix21.makeid(obs)

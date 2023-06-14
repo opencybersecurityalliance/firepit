@@ -21,7 +21,7 @@ from .helpers import tmp_storage
 
 
 def test_local(fake_bundle_file, tmpdir):
-    store = tmp_storage(tmpdir)
+    store = tmp_storage(tmpdir,clear=True)
 
     store.cache('q1', fake_bundle_file)
     assert 'url' in store.tables()
@@ -37,5 +37,14 @@ def test_local(fake_bundle_file, tmpdir):
     assert len(urls) == 14
     assert 'http://www8.example.com/page/176' in urls
     assert 'http://www27.example.com/page/64' not in urls
+
+    # check that the bundle table is there
+    assert 'bundle' in store.tables()
+    count = store.count("bundle")
+    assert count==532
+    cursor = store._query(store._select("bundle"))
+    for r in cursor:
+        # check that the object is in there....
+        print(r)
 
 

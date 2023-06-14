@@ -83,6 +83,11 @@ OD_TABLE = ('CREATE UNLOGGED TABLE "observed-data" ('
             ' "last_observed" TEXT,'
             ' "number_observed" BIGINT'
             ')')
+# Bundle table contains the list of stix ids
+BUNDLE_TABLE = ('CREATE UNLOGGED TABLE "bundle" ('
+            ' "bundle_id" TEXT,'
+            ' "object_id" TEXT,'
+            ')')
 
 INTERNAL_TABLES = [
     METADATA_TABLE,
@@ -92,6 +97,7 @@ INTERNAL_TABLES = [
     COLUMNS_TABLE,
     ID_TABLE,
     OD_TABLE,
+    BUNDLE_TABLE
 ]
 
 
