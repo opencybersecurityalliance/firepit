@@ -19,10 +19,13 @@ from firepit.query import Table
 
 from .helpers import tmp_storage
 
+import json
 
 def test_local(fake_bundle_file, tmpdir):
     store = tmp_storage(tmpdir,clear=True)
-
+    with open(fake_bundle_file,'r') as file:
+        bundle = json.load(file)
+        tot_objs = len(bundle['objects'])
     store.cache('q1', fake_bundle_file)
     assert 'url' in store.tables()
     assert 'url' in store.types()
@@ -41,7 +44,7 @@ def test_local(fake_bundle_file, tmpdir):
     # check that the bundle table is there
     assert 'bundle' in store.tables()
     count = store.count("bundle")
-    assert count==532
+    assert count==tot_objs
     cursor = store._query(store._select("bundle"))
     for r in cursor:
         # check that the object is in there....
