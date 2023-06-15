@@ -44,10 +44,18 @@ def test_local(fake_bundle_file, tmpdir):
     # check that the bundle table is there
     assert 'bundle' in store.tables()
     count = store.count("bundle")
-    assert count==tot_objs
+
     cursor = store._query(store._select("bundle"))
+    missing = 0
     for r in cursor:
         # check that the object is in there....
-        print(r)
+        found = False
+        for obj in bundle['objects']:
+            if r['object_id'] == obj['id']:
+                found = True
+                break
+        if found == False:
+            missing +=1
 
-
+    assert missing==0
+    assert count==tot_objs
