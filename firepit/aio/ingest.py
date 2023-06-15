@@ -220,7 +220,6 @@ def translate(
     # (flattened) native results.
 
     # Columns to duplicate (assume same Transformer?)
-    #dup_cols = {}
     dup_cols = defaultdict(list)
 
     # Transformers
@@ -503,15 +502,18 @@ def translate(
         if not obj:
             continue  # i.e. skip observed-data
         _make_ids(df, obj, obj_key, sco_type, ref_ids)
-        _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
+        tmp = _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
+        unresolved.update(tmp)
 
     # Maybe we can now resolve the unresolved refs?
+    logger.debug('Try ref resolution one last time (last round)')
     still_unresolved = {}
     for ref_col, value in unresolved.items():
         obj_key, _, _ = ref_col.rpartition(':')
         obj, _, sco_type = obj_key.rpartition('#')
         tmp = _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
         still_unresolved.update(tmp)
+    logger.debug('Still unresolved: %s', still_unresolved)
 
     # Remove any unresolved refs at this point
     unresolved_ref_cols = list(still_unresolved.keys())
