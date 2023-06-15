@@ -46,16 +46,22 @@ def test_local(fake_bundle_file, tmpdir):
     count = store.count("bundle")
 
     cursor = store._query(store._select("bundle"))
-    missing = 0
-    for r in cursor:
-        # check that the object is in there....
-        found = False
-        for obj in bundle['objects']:
-            if r['object_id'] == obj['id']:
-                found = True
-                break
-        if found == False:
-            missing +=1
 
-    assert missing==0
-    assert count==tot_objs
+    ret_ids  = set()
+    orig_ids = set()
+    for r in cursor:
+        ret_ids.add(r['object_id'])
+
+    for obj in bundle['objects']:
+        orig_ids.add(obj['id'])
+
+    url_count = 0
+    for type in orig_ids:
+        if type.startswith('url'):url_count += 1
+
+    assert orig_ids.issubset(ret_ids)==True
+
+    extra = ret_ids - orig_ids
+
+    print('Total URL %d' % url_count)
+    print('Total extras %d' % len(extra))

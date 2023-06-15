@@ -451,6 +451,7 @@ class SqlStorage:
                 else:
                     logger.warning(f"Object of type {obj['type']} is without id")
                 splitter.write(obj)
+                cursor.execute
         splitter.close()
         self.connection.commit()
 
