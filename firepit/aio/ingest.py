@@ -393,7 +393,7 @@ def translate(
     for new_col, orig_cols in group.items():
         # Combine columns into single list column
         logger.debug('Group %s into "%s"', orig_cols, new_col)
-        df[new_col] = df[orig_cols].agg(lambda x: [i for i in list(x) if not pd.isna(i)], axis=1)  #.values.tolist()
+        df[new_col] = [[i for i in row if i == i or not pd.isna(i)] for row in df[orig_cols].values.tolist()]
         df = df.drop(orig_cols, axis=1)
 
     # Run transformers
