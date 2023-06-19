@@ -220,7 +220,6 @@ def translate(
     # (flattened) native results.
 
     # Columns to duplicate (assume same Transformer?)
-    #dup_cols = {}
     dup_cols = defaultdict(list)
 
     # Transformers
@@ -394,7 +393,7 @@ def translate(
     for new_col, orig_cols in group.items():
         # Combine columns into single list column
         logger.debug('Group %s into "%s"', orig_cols, new_col)
-        df[new_col] = df[orig_cols].agg(lambda x: [i for i in list(x) if not pd.isna(i)], axis=1)  #.values.tolist()
+        df[new_col] = [[i for i in row if i == i or not pd.isna(i)] for row in df[orig_cols].values.tolist()]
         df = df.drop(orig_cols, axis=1)
 
     # Run transformers
@@ -503,15 +502,18 @@ def translate(
         if not obj:
             continue  # i.e. skip observed-data
         _make_ids(df, obj, obj_key, sco_type, ref_ids)
-        _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
+        tmp = _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
+        unresolved.update(tmp)
 
     # Maybe we can now resolve the unresolved refs?
+    logger.debug('Try ref resolution one last time (last round)')
     still_unresolved = {}
     for ref_col, value in unresolved.items():
         obj_key, _, _ = ref_col.rpartition(':')
         obj, _, sco_type = obj_key.rpartition('#')
         tmp = _resolve_refs(df, sco_type, ref_cols, ref_ids, obj_set, obj_renames)
         still_unresolved.update(tmp)
+    logger.debug('Still unresolved: %s', still_unresolved)
 
     # Remove any unresolved refs at this point
     unresolved_ref_cols = list(still_unresolved.keys())
