@@ -102,6 +102,8 @@ Before you submit a pull request, check that it meets these guidelines:
    feature to the list in README.rst.
 3. The pull request should work for Python 3.7, 3.8 and 3.9.
 
+All contributions must be covered by a `Contributor's License Agreement`_ (CLA) and `Entity CLA`_ (if you are contributing on behalf of your employer). You will get a prompt to sign CLA when you submit your first PR.
+
 Tips
 ----
 
@@ -121,3 +123,5 @@ $ bump2version patch # possible: major / minor / patch
 $ git push
 $ git push --tags
 
+.. _Contributor's License Agreement: https://cla-assistant.io/opencybersecurityalliance/oasis-open-project
+.. _Entity CLA: https://www.oasis-open.org/open-projects/cla/entity-cla-20210630/

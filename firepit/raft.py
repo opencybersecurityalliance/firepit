@@ -89,7 +89,7 @@ def json_normalize(d, prefix='', sep='.', flat_lists=False):
             key = k
         if prefix:
             key = f'{prefix}{sep}{key}'
-        if isinstance(v, dict) and not (isinstance(otype, str) and otype.startswith('x-')):
+        if k == 'extensions' or (isinstance(v, dict) and not (isinstance(otype, str) and otype.startswith('x-'))):
             # Don't recurse for custom SCO objects
             r.update(json_normalize(v, key, sep, flat_lists))
         elif flat_lists and isinstance(v, list):
