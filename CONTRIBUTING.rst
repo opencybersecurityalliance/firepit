@@ -15,7 +15,7 @@ Types of Contributions
 Report Bugs
 ~~~~~~~~~~~
 
-Report bugs at https://github.com/IBM/firepit/issues.
+Report bugs at https://github.com/opencybersecurityalliance/firepit/issues.
 
 If you are reporting a bug, please include:
 
@@ -45,7 +45,7 @@ articles, and such.
 Submit Feedback
 ~~~~~~~~~~~~~~~
 
-The best way to send feedback is to file an issue at https://github.com/IBM/firepit/issues.
+The best way to send feedback is to file an issue at https://github.com/opencybersecurityalliance/firepit/issues.
 
 If you are proposing a feature:
 
@@ -67,7 +67,7 @@ Ready to contribute? Here's how to set up `firepit` for local development.
 3. Install your local copy into a virtualenv. Assuming you have pyenv installed, this is how you set up your fork for local development::
 
     $ cd firepit/
-    $ pyenv virtualenv python-3.6.8 firepit
+    $ pyenv virtualenv python-3.9.2 firepit
     $ pyenv local firepit
     $ make setup
 
@@ -90,6 +90,8 @@ Ready to contribute? Here's how to set up `firepit` for local development.
     $ git push origin name-of-your-bugfix-or-feature
 
 7. Submit a pull request through the GitHub website.
+8. Request a review from one of the maintainers.
+
 
 Pull Request Guidelines
 -----------------------
@@ -100,7 +102,8 @@ Before you submit a pull request, check that it meets these guidelines:
 2. If the pull request adds functionality, the docs should be updated. Put
    your new functionality into a function with a docstring, and add the
    feature to the list in README.rst.
-3. The pull request should work for Python 3.7, 3.8 and 3.9.
+3. The pull request should work for Python 3.8, 3.9, 3.10, and 3.11.
+   There is a GitHub workflow that will check for this automatically.
 
 All contributions must be covered by a `Contributor's License Agreement`_ (CLA) and `Entity CLA`_ (if you are contributing on behalf of your employer). You will get a prompt to sign CLA when you submit your first PR.
 
@@ -109,13 +112,17 @@ Tips
 
 To run a subset of tests::
 
-$ pytest tests.test_firepit
+$ pytest tests/test_storage.py
+
+Or::
+
+$ pytest -k test_something...
 
 
-Deploying
+Releasing
 ---------
 
-A reminder for the maintainers on how to deploy.
+A reminder for the maintainers on how to release.
 Make sure all your changes are committed (including an entry in HISTORY.rst).
 Then run::
 

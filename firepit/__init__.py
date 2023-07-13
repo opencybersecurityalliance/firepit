@@ -2,7 +2,7 @@
 
 __author__ = """IBM Security"""
 __email__ = 'pcoccoli@us.ibm.com'
-__version__ = '2.3.23'
+__version__ = '2.3.24'
 
 
 import re
