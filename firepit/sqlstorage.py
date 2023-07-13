@@ -910,7 +910,8 @@ class SqlStorage:
             run=True):
         """
         Get the observations of `value` in `viewname`.`path`
-        Returns list of dicts like {'name_of_SDO_attribute': '...', '{column}': '...'}
+        Returns list of dicts like {'name_of_attribute': '...', '{column}': '...'}
+        `name_of_attribute` can be a str or list of str (to get multiple attrs)
         """
         qry = Query([
             Table(viewname),
@@ -937,11 +938,22 @@ class SqlStorage:
             proj.append(Column(column, table, p))
         if column and value is not None:
             qry.append(Filter([Predicate(column, '=', value)]))
-        new_col = Column(name_of_attribute, 'observed-data')
-        qry.append(Order([new_col]))
+        if isinstance(name_of_attribute, str):
+            attrs = [name_of_attribute]
+        elif isinstance(name_of_attribute, list):
+            attrs = name_of_attribute
+        else:
+            raise TypeError('name_of_attribute must be str or list[str]')
+        new_cols = []
+        for attr in attrs:
+            if attr == 'id':
+                new_cols.append(Column(attr, 'observed-data', 'observation_id'))
+            else:
+                new_cols.append(Column(attr, 'observed-data'))
+        qry.append(Order(new_cols))
         if not proj:
             proj = [Column('*', viewname)]
-        qry.append(Projection([new_col] + proj))
+        qry.append(Projection(new_cols + proj))
         if limit:
             qry.append(Limit(limit))
 
