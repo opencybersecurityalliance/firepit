@@ -14,7 +14,7 @@ requirements = [
     'anytree',
     'python-dateutil',
     'ijson',
-    'lark-parser',
+    'lark',
     'tabulate',
     'typer',
     'ujson'
