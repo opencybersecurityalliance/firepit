@@ -6,6 +6,10 @@ coverage
 Sphinx
 twine
 stix2
+ujson
+ijson
+anytree
+lark
 
 pytest
 pytest-cov

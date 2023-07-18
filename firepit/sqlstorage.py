@@ -435,13 +435,25 @@ class SqlStorage:
         writer = self._get_writer(**kwargs)
         splitter = SplitWriter(writer, batchsize=batchsize, query_id=str(query_id))
 
+        cursor = self._execute('BEGIN;')
+        bundle_schema = {'bundle_id':'TEXT','object_id':'TEXT'}
+        self._create_table("bundle", bundle_schema)
         # walk the bundles and figure out all the columns
         for bundle in bundles:
+            bundle_id = raft.get_bundle_id(bundle)
             if isinstance(bundle, str):
-                logger.debug('- Caching %s', bundle)
+                logger.debug(f'- Caching {0} with ID {1}', bundle,bundle_id)
+
             for obj in _transform(bundle):
+                # add one line each to keep track
+                if 'id' in obj:
+                    self.upsert(cursor,"bundle", [bundle_id,obj['id']],query_id,bundle_schema)
+                else:
+                    logger.warning(f"Object of type {obj['type']} is without id")
                 splitter.write(obj)
+                cursor.execute
         splitter.close()
+        self.connection.commit()
 
     def assign(self, viewname, on, op=None, by=None, ascending=True, limit=None):
         """
