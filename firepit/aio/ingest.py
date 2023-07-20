@@ -291,7 +291,7 @@ def translate(
                         new_col.endswith('network-traffic:protocols')):
                         proto_txf_cols[new_col] = txf_name
                     else:
-                        txf_cols[col] = col_mapping['transformer']
+                        txf_cols[col] = txf_name
                 elif 'value' in col_mapping:
                     # It's a constant value for every row
                     val_cols[new_col] = col_mapping['value']
@@ -320,13 +320,7 @@ def translate(
             txf = transformers.get(txf_name)
             if txf:
                 try:
-                    if (txf_name == 'ToLowercaseArray' and
-                        txf_col.endswith('network-traffic:protocols')):
-                        # Need to properly sort them
-                        logger.warn(f"Transformer for {txf_col} should run "
-                                    "after group, not here")
-                    else:
-                        df[txf_col] = df[txf_col].dropna().apply(txf.transform)
+                    df[txf_col] = df[txf_col].dropna().apply(txf.transform)
                 except AttributeError as e:
                     logger.error("%s", e, exc_info=e)
                     #TODO: what do we do here?
