@@ -429,11 +429,11 @@ class AsyncpgStorage(AsyncStorage):
             if stype == 'text':
                 df[col] = df[col].astype('string')
             elif stype == 'numeric':
-                df[col] = df[col].astype('UInt64')
+                df[col] = df[col].replace("", None).astype('UInt64')
             elif stype == 'bigint':
-                df[col] = df[col].astype('Int64')
+                df[col] = df[col].replace("", None).astype('Int64')
             elif stype == 'integer':
-                df[col] = df[col].astype('Int32')
+                df[col] = df[col].replace("", None).astype('Int32')
             elif stype == 'boolean':
                 df[col] = df[col].astype('boolean')
 
