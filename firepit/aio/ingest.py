@@ -305,7 +305,7 @@ def translate(
         logger.debug('transform: %s %s', txf_col, txf_name)
         # Accelerate common transforms
         if txf_name == 'ToInteger':
-            df[txf_col] = df[txf_col].dropna().astype('int')
+            df[txf_col] = pd.to_numeric(df[txf_col]).dropna().astype('int')
         elif txf_name == 'EpochToTimestamp':  # QRadar, QDL
             df[txf_col] = (pd.to_datetime(df[txf_col].astype(int),
                                           unit="ms",
