@@ -86,7 +86,7 @@ def _get_mapping(mapping: dict, col: str):
         cmap = tmp
     if cmap is not None:
         if isinstance(cmap, dict):
-            if 'key' in cmap:
+            if 'key' in cmap and isinstance(cmap['key'], str):
                 # there could me more than 1 mapping target
                 cmap = [cmap]
             else:

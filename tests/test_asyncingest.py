@@ -508,6 +508,40 @@ def test_translate_no_protocol():
     df = translate(stix_map, transformers, events, data_source)
 
 
+def test_translate_regkey():
+    # Example STIX mapping, based on azure_sentinel
+    stix_map = {
+        "eventDateTime": [
+            {
+                "key": "first_observed"
+            }
+        ],
+        "event_count": {
+            "key": "number_observed",
+            "transformer": "ToInteger"
+        },
+        "registryKeyStates": {
+            "key": {
+                "key": "windows-registry-key.key",
+                "object": "registry"
+            },
+        }
+    }
+    transformers = {
+        'ToInteger': lambda x: int(x),
+        'ToLowercaseArray': ToLowercaseArray
+    }
+
+    # Fake up some data
+    events = [
+        {
+            "eventDateTime": "2023-08-07T22:00:22.052Z",
+            "registryKeyStates": [],
+        }
+    ]
+    df = translate(stix_map, transformers, events, data_source)
+
+
 @pytest.mark.asyncio
 async def test_ingest(tmpdir):
     df = pd.DataFrame(
