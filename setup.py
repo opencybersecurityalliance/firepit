@@ -32,7 +32,7 @@ extras_requirements = {
 setup(
     author="IBM Security",
     author_email='pcoccoli@us.ibm.com',
-    python_requires='>=3.7',
+    python_requires='>=3.8',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Topic :: Security',
@@ -40,7 +40,6 @@ setup(
         'License :: OSI Approved :: Apache Software License',
         'Natural Language :: English',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
@@ -65,6 +64,6 @@ setup(
     test_suite='tests',
     tests_require=test_requirements,
     url='https://github.com/opencybersecurityalliance/firepit',
-    version='2.3.26',
+    version='2.3.27',
     zip_safe=False,
 )

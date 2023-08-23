@@ -86,7 +86,7 @@ def _get_mapping(mapping: dict, col: str):
         cmap = tmp
     if cmap is not None:
         if isinstance(cmap, dict):
-            if 'key' in cmap:
+            if 'key' in cmap and isinstance(cmap['key'], str):
                 # there could me more than 1 mapping target
                 cmap = [cmap]
             else:
@@ -437,7 +437,7 @@ def translate(
         if (txf_name == 'ToLowercaseArray' and
             txf_col.endswith('network-traffic:protocols')):
             # Need to properly sort them
-            df[txf_col] = df[txf_col].apply(_to_protocols)
+            df[txf_col] = df[txf_col].dropna().apply(_to_protocols)
         else:
             df[txf_col] = df[txf_col].dropna().apply(txf.transform)
 
