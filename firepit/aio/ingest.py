@@ -437,7 +437,7 @@ def translate(
         if (txf_name == 'ToLowercaseArray' and
             txf_col.endswith('network-traffic:protocols')):
             # Need to properly sort them
-            df[txf_col] = df[txf_col].apply(_to_protocols)
+            df[txf_col] = df[txf_col].dropna().apply(_to_protocols)
         else:
             df[txf_col] = df[txf_col].dropna().apply(txf.transform)
 

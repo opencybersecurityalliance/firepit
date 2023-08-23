@@ -450,6 +450,64 @@ def test_unmapped_col():
     df = translate(stix_map, transformers, events, data_source)
 
 
+def test_translate_no_protocol():
+    # Example STIX mapping
+    stix_map = {
+        "CreatedAt": {
+            "key": "first_observed"
+        },
+        "Service": {
+            "Action": {
+                "NetworkConnectionAction": {
+                    "Protocol": [
+                        {
+                            "key": "network-traffic.protocols",
+                            "object": "nt",
+                            "transformer": "ToLowercaseArray"
+                        }
+                    ]
+                }
+            },
+            "Count": {
+                "key": "x-ibm-finding.event_count",
+                "object": "finding"
+            }
+        }
+    }
+    transformers = {
+        'ToLowercaseArray': ToLowercaseArray
+    }
+
+    # Fake up some data
+    events = [
+        {
+            "CreatedAt": "2023-06-08T08:21:04.979Z",
+            "Service": {
+                "Action": {
+                    "ActionType": "AWS_API_CALL",
+                    "AwsApiCallAction": {
+                        "Api": "ListObjects"
+                    }
+                },
+                "Count": 9
+            }
+        },
+        {
+            "CreatedAt": "2023-05-01T13:56:28.723Z",
+            "Service": {
+                "Action": {
+                    "ActionType": "NETWORK_CONNECTION",
+                    "NetworkConnectionAction": {
+                        "Protocol": "TCP"
+                    }
+                },
+                "Count": 7
+            }
+        }
+    ]
+    df = translate(stix_map, transformers, events, data_source)
+
+
 @pytest.mark.asyncio
 async def test_ingest(tmpdir):
     df = pd.DataFrame(
