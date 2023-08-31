@@ -494,8 +494,8 @@ def translate(
     sco_types = set()
     for obj_key in obj_set:
         obj, _, sco_type = obj_key.rpartition('#')
-        if not obj:
-            continue  # i.e. skip observed-data
+        if sco_type == 'observed-data':
+            continue
         if sco_type in ('network-traffic', 'file', 'email-message', 'process'):
             # These types have refs in their ID contributing properties,
             # so do them last
@@ -573,7 +573,7 @@ async def ingest(
 
     # Need to split df and rename columns
     schemas = defaultdict(OrderedDict)
-    objects = {}
+    objects = set()
     columns = []
     for col in df.columns:
         # col is in the form [<obj_name>#]<obj_type>:<obj_attr>
@@ -585,7 +585,12 @@ async def ingest(
             obj_name = ''
         obj_type = col[h + 1:c]
         obj_attr = col[c + 1:]
-        objects[obj_name] = obj_type
+        # Create a "key" here of 'name#type'
+        if obj_name:
+            obj_key = f'{obj_name}#{obj_type}'
+        else:
+            obj_key = obj_type
+        objects.add(obj_key)
         if col.endswith('_refs'):
             continue
         pd_col = df[col]
@@ -632,11 +637,9 @@ async def ingest(
     # load existing schemas
     old_schemas = await _get_schemas(writer)
 
-    for obj_name, obj_type in objects.items():
-        if obj_name:
-            prefix = f'{obj_name}#{obj_type}:'
-        else:
-            prefix = f'{obj_type}:'
+    for obj_key in objects:
+        obj_name, _, obj_type = obj_key.rpartition('#')
+        prefix = obj_key + ':'
         cols = sorted([c for c in df.columns if c.startswith(prefix)])
         odf = df[cols].dropna(how='all').copy()
         odf.columns = [c.rpartition(':')[2] for c in cols]
