@@ -1,4 +1,6 @@
 import json
+import re
+
 import pytest
 
 import numpy as np
@@ -37,6 +39,13 @@ class ToLowercaseArray:
             pass
 
 
+class ValueToList:
+    """A value transformer that converts a single value into a list container the value"""
+    @staticmethod
+    def transform(obj):
+        return [obj]
+
+
 def test_translate():
     # Example STIX mapping
     stix_map = {
@@ -52,6 +61,9 @@ def test_translate():
                 "cybox": False
             }
         ],
+        "applicationname": {  # From qradar
+            "key": "software.name"
+        },
         "ip": [  # elastic_ecs does this
             {
                 "key": "ipv4-addr.value",
@@ -210,6 +222,19 @@ def test_translate():
                 }
             ]
         },
+        "event": {  # From elastic_ecs
+            "category": {
+                "key": "x-oca-event.category",
+                "group": True,
+                "object": "event"
+            },
+            "kind": {
+                "key": "x-oca-event.category",
+                "group": True,
+                "object": "event",
+                "transformer": "ValueToList"
+            }
+        },
         "qid": [
             {
                 "key": "x-custom-obj.qid",
@@ -225,7 +250,8 @@ def test_translate():
     }
     transformers = {
         'ToInteger': lambda x: int(x),
-        'ToLowercaseArray': ToLowercaseArray
+        'ToLowercaseArray': ToLowercaseArray,
+        'ValueToList': ValueToList,
     }
 
     # Fake up some data
@@ -233,6 +259,7 @@ def test_translate():
         {
             "foo": "bar",  # Unmapped column
             "timestamp": "1675275995001",
+            "applicationname": "frogger",
             "hostname": "ATLWKS138",
             "ip": ["192.168.1.1"],
             "mac": ["01:02:03:AA:BB:CC"],
@@ -276,6 +303,10 @@ def test_translate():
                 },
                 "executable": "C:\\Windows\\System32\\svchost.exe",
                 "command_line": "C:\\Windows\\system32\\svchost.exe -k LocalServiceNetworkRestricted -p -s WinHttpAutoProxySvc"
+            },
+            "event": {
+                "category": ["foo"],
+                "kind": "bar"
             },
             "user": {
                 "id": 1001,
@@ -401,6 +432,22 @@ def test_translate():
     assert df[col].iloc[0] is None
     assert df[col].iloc[1] is None
     assert df[col].iloc[2] == 'paul'
+
+    col = 'software:name'
+    assert col in df.columns
+    assert df[col].iloc[0] == "frogger"
+    assert df[col].iloc[1] is None
+    assert df[col].iloc[2] is None
+
+    col = 'event#x-oca-event:category'
+    assert col in df.columns
+    assert df[col].iloc[0] is None
+    assert df[col].iloc[1] is None
+    assert df[col].iloc[2] == ["foo", "bar"]
+
+    # Make sure the id columns got created
+    assert 'src_ip#ipv4-addr:id' in df.columns
+    assert 'software:id' in df.columns
 
 
 def test_unmapped_col():
@@ -546,11 +593,23 @@ def test_translate_regkey():
 async def test_ingest(tmpdir):
     df = pd.DataFrame(
         {
+            "software:id": ["software--1", None, None],
+            "software:name": ["frogger", None, None],
+            "observed-data:id": ["observed-data--1", "observed-data--2", "observed-data--3"],
+            "observed-data:first_observed": ["2023-08-31T14:07:20.000Z", "2023-08-31T14:07:21.000Z", "2023-08-31T14:07:22.000Z"],
+            "observed-data:last_observed": ["2023-08-31T14:07:20.000Z", "2023-08-31T14:07:21.000Z", "2023-08-31T14:07:22.000Z"],
+            "observed-data:number_observed": [1, 1, 1],
+            "src_ip#ipv4-addr:id": ['ipv4-addr--1', 'ipv4-addr--2', None],
             "src_ip#ipv4-addr:value": ['192.168.1.1', '192.168.1.2', None],
+            "src_ip#ipv6-addr:id": [None, None, "ipv6-addr--3"],
             "src_ip#ipv6-addr:value": [None, None, "2001:db8:85a3:8d3:1319:8a2e:370:7348"],
+            "x-custom-obj#x-custom-obj:id": ['x-custom-obj--1', 'x-custom-obj--2', None],
             "x-custom-obj#x-custom-obj:qid": [12345678, 12345679, None]
         })
 
     store = await async_storage(tmpdir)
     await ingest(store, data_source, df, 'my-query-id')
+    tables = set(await store.tables())
+    expected = set([re.sub(r"(.*#)?(.*):.*", r"\2", col) for col in df.columns] + ['identity'])
+    assert tables == expected
     await store.delete()
