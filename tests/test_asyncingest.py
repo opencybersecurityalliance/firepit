@@ -39,6 +39,13 @@ class ToLowercaseArray:
             pass
 
 
+class ValueToList:
+    """A value transformer that converts a single value into a list container the value"""
+    @staticmethod
+    def transform(obj):
+        return [obj]
+
+
 def test_translate():
     # Example STIX mapping
     stix_map = {
@@ -215,6 +222,19 @@ def test_translate():
                 }
             ]
         },
+        "event": {  # From elastic_ecs
+            "category": {
+                "key": "x-oca-event.category",
+                "group": True,
+                "object": "event"
+            },
+            "kind": {
+                "key": "x-oca-event.category",
+                "group": True,
+                "object": "event",
+                "transformer": "ValueToList"
+            }
+        },
         "qid": [
             {
                 "key": "x-custom-obj.qid",
@@ -230,7 +250,8 @@ def test_translate():
     }
     transformers = {
         'ToInteger': lambda x: int(x),
-        'ToLowercaseArray': ToLowercaseArray
+        'ToLowercaseArray': ToLowercaseArray,
+        'ValueToList': ValueToList,
     }
 
     # Fake up some data
@@ -282,6 +303,10 @@ def test_translate():
                 },
                 "executable": "C:\\Windows\\System32\\svchost.exe",
                 "command_line": "C:\\Windows\\system32\\svchost.exe -k LocalServiceNetworkRestricted -p -s WinHttpAutoProxySvc"
+            },
+            "event": {
+                "category": ["foo"],
+                "kind": "bar"
             },
             "user": {
                 "id": 1001,
@@ -413,6 +438,12 @@ def test_translate():
     assert df[col].iloc[0] == "frogger"
     assert df[col].iloc[1] is None
     assert df[col].iloc[2] is None
+
+    col = 'event#x-oca-event:category'
+    assert col in df.columns
+    assert df[col].iloc[0] is None
+    assert df[col].iloc[1] is None
+    assert df[col].iloc[2] == ["foo", "bar"]
 
     # Make sure the id columns got created
     assert 'src_ip#ipv4-addr:id' in df.columns

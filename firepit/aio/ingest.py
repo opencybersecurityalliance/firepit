@@ -428,7 +428,15 @@ def translate(
     for new_col, orig_cols in group.items():
         # Combine columns into single list column
         logger.debug('Group %s into "%s"', orig_cols, new_col)
-        df[new_col] = [[i for i in row if i == i or not pd.isna(i)] for row in df[orig_cols].values.tolist()]
+        df[new_col] = [[] for i in range(len(df.index))]
+        sample_col = orig_cols[0]
+        if isinstance(df[sample_col].loc[df[sample_col].first_valid_index()], str):
+            # We're "group"ing str columns into a list
+            df[new_col] = [[i for i in row if i == i or not pd.isna(i)] for row in df[orig_cols].values.tolist()]
+        else:
+            # Assume we're grouping lists together
+            for orig_col in orig_cols:
+                df[new_col] += df[orig_col]
         df = df.drop(orig_cols, axis=1)
 
     # Run protocol transformers
