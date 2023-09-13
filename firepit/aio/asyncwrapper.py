@@ -55,6 +55,7 @@ class SyncWrapper(AsyncStorage):
             raise SessionNotFound(self.connstring)
         logger.debug('Attaching to storage for session %s', self.session_id)
         self.store = get_storage(self.connstring)
+        self.conn = self.store.connection
         self.placeholder = self.store.placeholder
         self.dialect = self.store.dialect
 
@@ -65,6 +66,10 @@ class SyncWrapper(AsyncStorage):
         Ingest a single, in-memory STIX bundle, labelled with `query_id`.
         """
         self.store.cache(query_id, bundle)
+
+    async def execute(self, stmt, *values):
+        """Execute SQL statement `stmt` with parameters `*values`"""
+        return self.store.connection.execute(stmt, values)
 
     async def tables(self):
         return self.store.tables()
