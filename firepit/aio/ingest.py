@@ -14,9 +14,9 @@ import ujson
 
 from firepit.aio.asyncstorage import AsyncStorage
 from firepit.exceptions import DuplicateTable
+from firepit.pgcommon import pg_shorten
 from firepit.props import KNOWN_PROPS
 from firepit.raft import json_normalize
-from firepit.splitter import shorten_extension_name
 from firepit.stix21 import makeid
 from firepit.timestamp import timefmt
 
@@ -583,6 +583,7 @@ async def ingest(
     schemas = defaultdict(OrderedDict)
     objects = set()
     columns = []
+    renames = []  # Might need to rename some columns
     for col in df.columns:
         # col is in the form [<obj_name>#]<obj_type>:<obj_attr>
         h = col.find('#') # Might be able to do all this in advance?
@@ -600,6 +601,7 @@ async def ingest(
             obj_key = obj_type
         objects.add(obj_key)
         if col.endswith('_refs'):
+            renames.append(col)
             continue
         pd_col = df[col]
         index = pd_col.first_valid_index()
@@ -618,14 +620,18 @@ async def ingest(
                 dtype = value.__class__.__name__
         if dtype == 'list':
             df[col] = df[col].apply(lambda x: ujson.dumps(x, ensure_ascii=False))
-        schemas[obj_type][obj_attr] = _infer_type(writer, obj_attr, value, dtype)
-        logger.debug('ingest: col %s val %s dtype %s (%s)', col, value, dtype, schemas[obj_type][obj_attr])
 
         # shorten key (STIX prop) to make column names more manageable
-        if len(obj_attr) > 63 or 'extensions.' in obj_attr:
-            shortname = shorten_extension_name(obj_attr)  # Need to detect collisions!
+        if len(obj_attr) > 48 or 'extensions.' in obj_attr:
+            shortname = pg_shorten(obj_attr)  # Need to detect collisions!
+            renames.append(f'{obj_name}#{obj_type}:{shortname}')
         else:
             shortname = obj_attr
+            renames.append(col)
+
+        sql_type = _infer_type(writer, shortname, value, dtype)
+        schemas[obj_type][shortname] = sql_type
+        logger.debug('ingest: col %s val %s dtype %s (%s)', col, value, dtype, sql_type)
 
         # Generate __columns entry
         if dtype.endswith('64'):
@@ -637,6 +643,9 @@ async def ingest(
             'shortname': shortname,
             'dtype': dtype,
         })
+
+    # Now do the actual column renaming/shortening
+    df.columns = renames
 
     col_df = pd.DataFrame.from_records(columns)
     col_df = col_df.drop_duplicates(['otype', 'path'])

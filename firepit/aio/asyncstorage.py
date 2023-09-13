@@ -269,6 +269,13 @@ class AsyncDBCache:
         cols = self.meta_dict.get(table, {})
         return cols.get(shortname)
 
+    def _lookup_longname(self, table, longname):
+        cols = self.meta_dict.get(table, {})
+        for _, meta in cols.items():
+            if meta['path'] == longname:
+                return meta
+        return None
+
     def column_metadata(self, table, path):
         """Get DB column metadata for STIX object path `path`"""
         # 'path' here could be the prop side of a STIX object path,
@@ -277,25 +284,36 @@ class AsyncDBCache:
         # parse_path, then use final node to look up longname
         # Strip obj_type from longname and replace with table:ref.
         if table == 'observed-data':
-            longname = ''
+            longname = ''  #TODO: could fast-path this?
         else:
             longname = f"{table}:"
         links = parse_prop(table, path)
+        tgt_prop = None
         if len(links) > 1:
             # There's at least 1 reference/join
             longname_parts = []
             tgt_prop_parts = []
             tgt_type = table
+            refs = []
             for link in links:
                 if link[0] == 'rel':
                     # Store last referenced table as the "target" table
                     tgt_type = link[3]
+                    refs.append(link[2])
                     longname_parts.append(link[2])
                 else:
                     tgt_prop_parts.append(link[2])
             tgt_prop = '.'.join(tgt_prop_parts)
             longname += '.'.join(longname_parts) + '.'
+            logger.debug('ref lookup shortname %s %s', tgt_type, tgt_prop)
             data = self._lookup_shortname(tgt_type, tgt_prop)
+            if not data:
+                logger.debug('lookup longname %s %s (refs: %s)', tgt_type, tgt_prop, refs)
+                data = self._lookup_longname(tgt_type, tgt_prop)
+            if data:
+                # Return "path" of refs to caller
+                data['refs'] = refs
+            path = tgt_prop
         else:
             data = self._lookup_shortname(table, path)
         if not data:

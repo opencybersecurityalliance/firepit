@@ -105,6 +105,10 @@ class AsyncpgStorage(AsyncStorage):
 
         await self.conn.execute(f'SET search_path TO "{self.session_id}", firepit_common')
 
+    async def execute(self, stmt, *values):
+        """Execute SQL statement `stmt` with parameters `*values`"""
+        return await self.conn.execute(stmt, *values)
+
     async def cache(self,
                     query_id: str,
                     bundle: dict):
@@ -607,7 +611,7 @@ class AsyncSplitWriter:
                 if key in ['type', 'spec_version']:
                     continue
                 # shorten key (STIX prop) to make column names more manageable
-                if len(key) > 63 or 'extensions.' in key:
+                if len(key) > 48 or 'extensions.' in key:
                     shortname = self.writer.shorten(key)  # Need to detect collisions!
                 else:
                     shortname = key
