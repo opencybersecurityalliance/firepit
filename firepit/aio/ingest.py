@@ -247,6 +247,9 @@ def translate(
     # columns we need to "unwrap"
     unwrap = set()
 
+    # "Unmapped" columns that we need to drop
+    unmapped = []
+
     logger.debug('columns: %s', cols)
     for col in cols:
         logger.debug('column: %s', col)
@@ -298,7 +301,10 @@ def translate(
         else:
             # Drop unmapped columns
             logger.debug('DROP unmapped column "%s"', col)
-            df = df.drop(col, axis=1)
+            unmapped.append(col)
+
+    # Drop any columns that weren't mapped
+    df = df.drop(unmapped, axis=1)
 
     # Run transformers
     for txf_col, txf_name in txf_cols.items():
