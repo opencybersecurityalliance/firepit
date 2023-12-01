@@ -1,4 +1,7 @@
 from firepit.deref import auto_deref, auto_deref_cached
+from firepit.query import Query
+from firepit.query import Order
+from firepit.query import Table
 from firepit.sqlstorage import _get_col_dict
 from .helpers import tmp_storage
 
@@ -78,3 +81,10 @@ def test_deref_mixed(mixed_v4_v6_bundle, tmpdir):
     assert 'COALESCE(dst_ref4.value, dst_ref6.value) AS "dst_ref.value"' in result_cols
     assert 'COALESCE(dst_ref4.id, dst_ref6.id) AS "dst_ref.id"' in result_cols
     assert '"dst_ref4"."x_enrich" AS "dst_ref.x_enrich"' in result_cols
+
+    query = Query([
+        Table('conns'),
+        Order([('dst_ref.value', Order.ASC)]),
+    ])
+    store.assign_query('sconns', query)
+    _ = store.lookup('sconns')

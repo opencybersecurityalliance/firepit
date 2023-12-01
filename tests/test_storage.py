@@ -750,6 +750,7 @@ def test_assign_query_1(fake_bundle_file, tmpdir):
     store.assign_query('conns', query)
     srcs = store.values('src_ref.value', 'conns')
     assert srcs[0] > srcs[-1]
+    assert srcs == sorted(srcs, reverse=True)
 
 
 def test_number_observed(fake_bundle_file, tmpdir):
