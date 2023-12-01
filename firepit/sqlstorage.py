@@ -603,10 +603,20 @@ class SqlStorage:
         """Get the value of `viewname`"""
         # Preserve sort order, if it's been specified
         # The joins below can reorder
+        # TODO: Identify when we actually need this - it's not clear,
+        #       and it breaks sorting by referenced properties.
         viewdef = self._get_view_def(viewname)
+        logger.debug('viewname %s: %s', viewname, viewdef)
         match = re.search(r"ORDER BY \"([a-z0-9:'\._\-]*)\" (ASC|DESC)$", viewdef)
         if match:
-            sort = (Column(match.group(1), viewname), match.group(2))
+            if "_ref." in match.group(1):
+                # Don't add viewname for ref'ed props because they may
+                # be in the aliased result of the JOIN, not in the
+                # viewname
+                sort = (match.group(1), match.group(2))
+            else:
+                # TODO: don't know *when* we actually need this
+                sort = (Column(match.group(1), viewname), match.group(2))
         else:
             sort = None
         qry = Query(viewname)
