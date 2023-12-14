@@ -47,6 +47,9 @@ def _normalize_ws(s):
          "[file:hashes.'SHA-256' = 'whatever']",
          "\"hashes.'SHA-256'\" = 'whatever'"),
         #TODO: need MATCHES example with PCRE that Python re doesn't support
+        ('url',
+         "[url:value MATCHES '^.*example\\..*']",
+         "\"value\" MATCH '^.*example\\..*'"),
     ]
 )
 def test_stix2sql(sco_type, pattern, where):

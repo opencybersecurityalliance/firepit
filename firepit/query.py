@@ -203,7 +203,7 @@ class Predicate:
         self.op = op
         self.rhs = rhs
 
-    def render(self, placeholder, _dialect=None):
+    def render(self, placeholder, dialect=None):
         if isinstance(self.lhs, Predicate):
             text = self.lhs.render(placeholder)
             text += f' {self.op} '
@@ -233,6 +233,9 @@ class Predicate:
             else:
                 rhs = ', '.join([placeholder] * len(self.rhs))
             text = f'({_quote(self.lhs)} {self.op} ({rhs}))'
+        elif op == 'MATCHES':
+            op = '~' if dialect == 'postgresql' else 'MATCH'
+            text = f'({_quote(self.lhs)} {op} {placeholder})'
         else:
             text = f'({_quote(self.lhs)} {self.op} {placeholder})'
         return text

@@ -43,7 +43,8 @@ def _convert_op(sco_type, prop, op, rhs, dialect):
         elif op == 'LIKE':
             return f'{neg} like_bin(CAST({rhs} AS TEXT), "{prop}")'
     elif op == 'MATCHES':
-        return f'{neg} match({rhs}, "{prop}")'
+        op = '~' if dialect == 'postgresql' else 'MATCH'
+        return f'{neg} "{prop}" {op} {rhs}'
     prop, chunk, subprop = prop.partition('[*]')
     if chunk:
         if op == '!=':

@@ -20,18 +20,20 @@ from firepit.query import Unique
 
 
 @pytest.mark.parametrize(
-    'lhs, op, rhs, expected_len', [
-        ('foo', '=', 99, 1),
-        ('bar', '>=', 99, 1),
-        ('baz', 'LIKE', '%blah%', 1),
-        ('baz', 'MATCHES', '^fooba.$', 1),
+    'lhs, op, rhs, dialect, expected_len, expected_text', [
+        ('foo', '=', 99, 'sqlite3', 1, '("foo" = ?)'),
+        ('bar', '>=', 99, 'sqlite3', 1, '("bar" >= ?)'),
+        ('baz', 'LIKE', '%blah%', 'sqlite3', 1, '("baz" LIKE ?)'),
+        ('baz', 'MATCHES', '^fooba.$', 'sqlite3', 1, '("baz" MATCH ?)'),
+        ('baz', 'MATCHES', '^fooba.$', 'postgresql', 1, '("baz" ~ %s)'),
     ]
 )
-def test_predicate(lhs, op, rhs, expected_len):
+def test_predicate(lhs, op, rhs, dialect, expected_len, expected_text):
     p1 = Predicate(lhs, op, rhs)
-    text = p1.render('?')
+    ph = '%s' if dialect == 'postgresql' else '?'
+    text = p1.render(ph, dialect)
+    assert text == expected_text
     assert str(rhs) not in text
-    assert '?' in text
     assert len(p1.values) == expected_len
     assert p1.values[0] == rhs
 
