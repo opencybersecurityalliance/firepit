@@ -72,11 +72,14 @@ def comp2sql(sco_type, prop, op, value, dialect):
             _, from_type, ref_name, to_type = link
             if ref_name.endswith('_refs'):
                 # Handle reflists
-                tmp = (f'JOIN "__reflist" AS "r" ON "{from_type}"."id" = "r"."source_ref"'
-                       f' WHERE "r"."target_ref"')
+                tmp = (f'"id" IN (SELECT "id" FROM "{from_type}" JOIN "__reflist" AS "r"'
+                       f' ON "{from_type}"."id" = "r"."source_ref" AND "r"."ref_name" = \'{ref_name}\''
+                       f' AND "r"."target_ref"')
+                end = ')'
             else:
                 tmp = f'"{ref_name}"'
-            result = f' {tmp} IN (SELECT "id" FROM "{to_type}" WHERE {result})'
+                end = ''
+            result = f' {tmp} IN (SELECT "id" FROM "{to_type}" WHERE {result}){end}'
 
     return result
 
