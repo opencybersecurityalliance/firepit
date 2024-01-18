@@ -41,8 +41,9 @@ def _normalize_ws(s):
          "\"src_ref\" IN (SELECT \"id\" FROM \"ipv4-addr\" WHERE \"value\" = '127.0.0.1')"),
         ('email-message',
          "[email-message:to_refs[*].value = 'name@example.com']",
-         ("JOIN \"__reflist\" AS \"r\" ON \"email-message\".\"id\" = \"r\".\"source_ref\""
-          " WHERE \"r\".\"target_ref\" IN (SELECT \"id\" FROM \"email-addr\" WHERE \"value\" = 'name@example.com')")),
+         ("\"id\" IN (SELECT \"id\" FROM \"email-message\" JOIN \"__reflist\" AS \"r\""
+          " ON \"email-message\".\"id\" = \"r\".\"source_ref\" AND \"r\".\"ref_name\" = 'to_refs'"
+          " AND \"r\".\"target_ref\" IN (SELECT \"id\" FROM \"email-addr\" WHERE \"value\" = 'name@example.com'))")),
         ('file',
          "[file:hashes.'SHA-256' = 'whatever']",
          "\"hashes.'SHA-256'\" = 'whatever'"),
