@@ -315,8 +315,7 @@ def translate(
         elif txf_name == 'EpochToTimestamp':  # QRadar, QDL
             df[txf_col] = (pd.to_datetime(df[txf_col].astype(int),
                                           unit="ms",
-                                          utc=True,
-                                          infer_datetime_format=True)
+                                          utc=True)
                            .dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ"))
         elif txf_name in ('FilterIPv4List', 'FilterIPv6List'):
             pass  # We already did this
