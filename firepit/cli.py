@@ -5,16 +5,15 @@ Typer-based CLI for testing and experimentation
 """
 
 import csv
-import ujson as json
 import logging
 import os
-from typing import List, Dict
+from typing import Dict, List
 
-from tabulate import tabulate
 import typer
+import ujson as json
+from tabulate import tabulate
 
 from firepit import get_storage
-
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
